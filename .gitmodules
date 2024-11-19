@@ -1,3 +1,7 @@
 [submodule "px4_msgs"]
 	path = src/px4_msgs
 	url = https://github.com/PX4/px4_msgs.git
+[submodule "src/drivers/DynamixelSDK"]
+	path = src/drivers/DynamixelSDK
+	url = https://github.com/ROBOTIS-GIT/DynamixelSDK.git
+	branch = humble-devel
