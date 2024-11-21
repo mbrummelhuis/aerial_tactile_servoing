@@ -6,34 +6,69 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 
-#include <mission_director/md_ros_wrapper.hpp>
 #include <mission_director/mission_director.hpp>
 #include <mission_director/state.hpp>
 #include <mission_director/state_disarmed.hpp>
 //using namespace std::chrono_literals;
 
+using namespace px4_msgs::msg;
 
 /* @brief 
 */
-MissionDirector::MissionDirector() {
-  // Set the backreference to the ROS2 wrapper
-    setWrapper(std::make_shared<MDROSWrapper>());
-    wrapper_->logInfo("Mission director initiated.");
+MissionDirector::MissionDirector() : Node("mission_director") {
+    RCLCPP_INFO(this->get_logger(),"Mission director initiated.");
 
     // Set initial state
-    SetState(std::make_shared<StateDisarmed>());
+    setState(std::make_shared<StateDisarmed>());
+
+    // subscribers
+    subscriber_vehicle_status_ = this->create_subscription<VehicleStatus>("/fmu/out/vehicle_status", 10, std::bind(&MissionDirector::vehicleStatusCallback, this, std::placeholders::_1));
+    subscriber_distance_sensor_ = this->create_subscription<DistanceSensor>("/fmu/out/distance_sensor", 10, std::bind(&MissionDirector::vehicleDistanceSensorCallback, this, std::placeholders::_1));
+    subscriber_vehicle_local_position_ = this->create_subscription<VehicleLocalPosition>("/fmu/out/vehicle_local_position", 10, std::bind(&MissionDirector::vehicleLocalPositionCallback, this, std::placeholders::_1));
+    // publishers
+    publisher_trajectory_setpoint_ = this->create_publisher<TrajectorySetpoint>("/fmu/in/trajectory_setpoint", 10);
+    publisher_vehicle_command_ = this->create_publisher<VehicleCommand>("/fmu/in/vehicle_command", 10);
+    publisher_offboard_control_mode_ = this->create_publisher<OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
+
+    // make timer
+    timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(1000 / frequency_), std::bind(&MissionDirector::execute, this));
 }
 
-void MissionDirector::setWrapper(std::shared_ptr<MDROSWrapper> wrapper) {
-    wrapper_ = wrapper;
-    wrapper_->logInfo("Setting Mission Director on ROS2 wrapper");
-}
-
-void MissionDirector::SetState(std::shared_ptr<State> new_state) {
+void MissionDirector::setState(std::shared_ptr<State> new_state) {
     current_state_ = new_state;
-    wrapper_->logInfo("State changed to: " + current_state_->getStateName());
 }
 
 void MissionDirector::execute() {
-    current_state_->runState();
+    current_state_->execute();
+}
+
+void MissionDirector::vehicleStatusCallback(const VehicleStatus::SharedPtr msg) {
+    RCLCPP_INFO(this->get_logger(), "I heard: [%d]", msg->nav_state);
+    current_state_->setVehicleStatus(msg);
+}
+
+void MissionDirector::vehicleDistanceSensorCallback(const DistanceSensor::SharedPtr msg) {
+    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->current_distance);
+    current_state_->setVehicleAltitude(msg);
+}
+
+void MissionDirector::vehicleLocalPositionCallback(const VehicleLocalPosition::SharedPtr msg) {
+    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->x);
+    current_state_->setVehicleLocalPosition(msg);
+}
+
+void MissionDirector::publishTrajectorySetpoint(TrajectorySetpoint::SharedPtr msg) {
+	msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
+    publisher_trajectory_setpoint_->publish(*msg); // publish the message
+}
+
+void MissionDirector::publishVehicleCommand(VehicleCommand::SharedPtr msg) {
+    msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
+    publisher_vehicle_command_->publish(*msg); // publish the message
+}
+
+void MissionDirector::publishOffboardControlmode(OffboardControlMode::SharedPtr msg) {
+    msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
+    publisher_offboard_control_mode_->publish(*msg); // publish the message
 }

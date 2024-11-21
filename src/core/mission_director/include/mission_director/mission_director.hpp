@@ -3,28 +3,57 @@
 
 // includes
 #include "rclcpp/rclcpp.hpp"
-#include "mission_director/md_ros_wrapper.hpp"
+
+
+#include <px4_msgs/msg/vehicle_status.hpp>
+#include <px4_msgs/msg/vehicle_command.hpp>
+#include <px4_msgs/msg/trajectory_setpoint.hpp>
+#include <px4_msgs/msg/offboard_control_mode.hpp>
+#include <px4_msgs/msg/distance_sensor.hpp>
+#include <px4_msgs/msg/vehicle_local_position.hpp>
+
 #include "mission_director/state.hpp"
 
+using namespace px4_msgs::msg;
 
-class MissionDirector {
+class MissionDirector : public rclcpp::Node {
     public:
         MissionDirector();
 
-        void SetState(std::shared_ptr<State> new_state);
+        void setState(std::shared_ptr<State> new_state);
 
         void runState();
 
         void execute();
 
         std::string getCurrentState() const;
+
+        void publishTrajectorySetpoint(TrajectorySetpoint::SharedPtr msg);
+        void publishVehicleCommand(VehicleCommand::SharedPtr msg);
+        void publishOffboardControlmode(OffboardControlMode::SharedPtr msg);
     
     private:
+        int frequency_ = 100; // Hz
         std::shared_ptr<State> current_state_;
         rclcpp::TimerBase::SharedPtr timer_;
-        std::shared_ptr<MDROSWrapper> wrapper_;
 
-        void setWrapper(std::shared_ptr<MDROSWrapper> wrapper);
+        // subscribers
+        rclcpp::Subscription<VehicleStatus>::SharedPtr subscriber_vehicle_status_;
+        rclcpp::Subscription<DistanceSensor>::SharedPtr subscriber_distance_sensor_;
+        rclcpp::Subscription<VehicleLocalPosition>::SharedPtr subscriber_vehicle_local_position_;
+
+        // publishers
+        rclcpp::Publisher<TrajectorySetpoint>::SharedPtr publisher_trajectory_setpoint_;
+        rclcpp::Publisher<VehicleCommand>::SharedPtr publisher_vehicle_command_;
+        rclcpp::Publisher<OffboardControlMode>::SharedPtr publisher_offboard_control_mode_;
+
+        // callbacks
+        void vehicleStatusCallback(const VehicleStatus::SharedPtr msg);
+        void vehicleDistanceSensorCallback(const DistanceSensor::SharedPtr msg);
+        void vehicleLocalPositionCallback(const VehicleLocalPosition::SharedPtr msg);
+
+        // data
+        TrajectorySetpoint trajectory_setpoint_;
 };
 
 

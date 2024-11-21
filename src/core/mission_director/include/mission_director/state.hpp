@@ -3,6 +3,11 @@
 
 // includes
 #include "rclcpp/rclcpp.hpp"
+
+#include <px4_msgs/msg/vehicle_status.hpp>
+#include <px4_msgs/msg/distance_sensor.hpp>
+
+#include "mission_director/mission_director.hpp"
 #include "mission_director/state.hpp"
 
 class State{
@@ -10,14 +15,25 @@ public:
     State();
     virtual ~State() = default;
 
-    virtual void runState();
+    virtual void transition();
 
-    virtual std::string getStateName() const = 0;
+    void setContext(std::weak_ptr<MissionDirector> context);
 
-    void setContext(std::shared_ptr<MissionDirector> context);
+    virtual void execute();
 
-private:
-    std::shared_ptr<MissionDirector> context_; // backreference to the mission director
+    // data setters
+    virtual void setVehicleStatus(const VehicleStatus::SharedPtr msg);
+    virtual void setVehicleAltitude(const DistanceSensor::SharedPtr msg);
+    virtual void setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg);
+
+    std::string getStateName() const {
+        return state_name_;
+    }
+
+    std::string state_name_;
+
+
+    std::weak_ptr<MissionDirector> context_; // backreference to the mission director
 };
 
 
