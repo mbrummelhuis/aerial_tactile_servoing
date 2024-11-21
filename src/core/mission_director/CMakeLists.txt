@@ -13,7 +13,7 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 
 include_directories(
-  include/mission_director
+  include
 )
 
 if(BUILD_TESTING)

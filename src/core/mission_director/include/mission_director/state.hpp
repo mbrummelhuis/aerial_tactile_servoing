@@ -12,7 +12,7 @@ public:
     State();
     virtual ~State() = default;
 
-    virtual void transition();
+    virtual void checkTransition();
 
     void setContext(std::weak_ptr<MissionDirector> context);
 

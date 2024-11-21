@@ -17,7 +17,7 @@ public:
 
     void setVehicleAltitude(const DistanceSensor::SharedPtr msg) override;
 
-    void checkTransition();
+    void checkTransition() override;
 
 private:
     std::string state_name_ = "Takeoff";

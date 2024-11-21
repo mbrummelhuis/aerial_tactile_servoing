@@ -21,6 +21,8 @@ class MissionDirector : public rclcpp::Node {
     public:
         MissionDirector();
 
+        void logInfo(std::string message);
+
         void setState(std::shared_ptr<State> new_state);
 
         void runState();

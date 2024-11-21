@@ -12,7 +12,7 @@ public:
 
     void setVehicleStatus(const VehicleStatus::SharedPtr msg) override;
 
-    void checkTransition();
+    void checkTransition() override;
 
 private:
     std::string state_name_ = "Disarmed";
