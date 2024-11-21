@@ -58,6 +58,11 @@ void MissionDirector::vehicleLocalPositionCallback(const VehicleLocalPosition::S
     current_state_->setVehicleLocalPosition(msg);
 }
 
+void MissionDirector::vehicleLandDetectedCallback(const VehicleLandDetected::SharedPtr msg) {
+    RCLCPP_INFO(this->get_logger(), "I heard: [%i]", msg->landed);
+    current_state_->setVehicleLandDetected(msg);
+}
+
 void MissionDirector::publishTrajectorySetpoint(TrajectorySetpoint::SharedPtr msg) {
 	msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
     publisher_trajectory_setpoint_->publish(*msg); // publish the message
@@ -71,4 +76,8 @@ void MissionDirector::publishVehicleCommand(VehicleCommand::SharedPtr msg) {
 void MissionDirector::publishOffboardControlmode(OffboardControlMode::SharedPtr msg) {
     msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
     publisher_offboard_control_mode_->publish(*msg); // publish the message
+}
+
+int MissionDirector::getFrequency() const {
+    return frequency_;
 }

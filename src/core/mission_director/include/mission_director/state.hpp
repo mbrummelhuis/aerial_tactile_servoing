@@ -4,9 +4,6 @@
 // includes
 #include "rclcpp/rclcpp.hpp"
 
-#include <px4_msgs/msg/vehicle_status.hpp>
-#include <px4_msgs/msg/distance_sensor.hpp>
-
 #include "mission_director/mission_director.hpp"
 #include "mission_director/state.hpp"
 
@@ -25,6 +22,7 @@ public:
     virtual void setVehicleStatus(const VehicleStatus::SharedPtr msg);
     virtual void setVehicleAltitude(const DistanceSensor::SharedPtr msg);
     virtual void setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg);
+    virtual void setVehicleLandDetected(const VehicleLandDetected::SharedPtr msg);
 
     std::string getStateName() const {
         return state_name_;

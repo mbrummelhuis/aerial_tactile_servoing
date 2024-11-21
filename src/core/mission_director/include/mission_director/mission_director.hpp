@@ -11,6 +11,7 @@
 #include <px4_msgs/msg/offboard_control_mode.hpp>
 #include <px4_msgs/msg/distance_sensor.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
+#include <px4_msgs/msg/vehicle_land_detected.hpp>
 
 #include "mission_director/state.hpp"
 
@@ -28,6 +29,8 @@ class MissionDirector : public rclcpp::Node {
 
         std::string getCurrentState() const;
 
+        int getFrequency() const;
+
         void publishTrajectorySetpoint(TrajectorySetpoint::SharedPtr msg);
         void publishVehicleCommand(VehicleCommand::SharedPtr msg);
         void publishOffboardControlmode(OffboardControlMode::SharedPtr msg);
@@ -41,7 +44,7 @@ class MissionDirector : public rclcpp::Node {
         rclcpp::Subscription<VehicleStatus>::SharedPtr subscriber_vehicle_status_;
         rclcpp::Subscription<DistanceSensor>::SharedPtr subscriber_distance_sensor_;
         rclcpp::Subscription<VehicleLocalPosition>::SharedPtr subscriber_vehicle_local_position_;
-
+        rclcpp::Subscription<VehicleLandDetected>::SharedPtr subscriber_vehicle_land_detected_;
         // publishers
         rclcpp::Publisher<TrajectorySetpoint>::SharedPtr publisher_trajectory_setpoint_;
         rclcpp::Publisher<VehicleCommand>::SharedPtr publisher_vehicle_command_;
@@ -51,7 +54,7 @@ class MissionDirector : public rclcpp::Node {
         void vehicleStatusCallback(const VehicleStatus::SharedPtr msg);
         void vehicleDistanceSensorCallback(const DistanceSensor::SharedPtr msg);
         void vehicleLocalPositionCallback(const VehicleLocalPosition::SharedPtr msg);
-
+        void vehicleLandDetectedCallback(const VehicleLandDetected::SharedPtr msg);
         // data
         TrajectorySetpoint trajectory_setpoint_;
 };

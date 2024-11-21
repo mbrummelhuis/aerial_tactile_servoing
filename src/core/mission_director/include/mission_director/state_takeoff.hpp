@@ -15,7 +15,7 @@ public:
 
     void execute() override;
 
-    void setVehicleAltitude(const px4_msgs::msg::DistanceSensor::SharedPtr msg) override;
+    void setVehicleAltitude(const DistanceSensor::SharedPtr msg) override;
 
     void checkTransition();
 
