@@ -5,14 +5,19 @@
 #include "rclcpp/rclcpp.hpp"
 #include "mission_director/state.hpp"
 
+class State{
+public:
+    State();
+    virtual ~State() = default;
 
-class State : public rclcpp::Node {
-    public:
-        State();
+    virtual void runState();
 
-        void runState();
-    
-    private:
+    virtual std::string getStateName() const = 0;
+
+    void setContext(std::shared_ptr<MissionDirector> context);
+
+private:
+    std::shared_ptr<MissionDirector> context_; // backreference to the mission director
 };
 
 

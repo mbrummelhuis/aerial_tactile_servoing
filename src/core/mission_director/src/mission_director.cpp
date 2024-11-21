@@ -6,37 +6,34 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 
+#include <mission_director/md_ros_wrapper.hpp>
 #include <mission_director/mission_director.hpp>
 #include <mission_director/state.hpp>
-
+#include <mission_director/state_disarmed.hpp>
 //using namespace std::chrono_literals;
 
 
 /* @brief 
 */
-MissionDirector::MissionDirector() : Node("mission_director") {
-    RCLCPP_INFO(this->get_logger(), "Mission Director started");
-    setState(std::make_shared<StateDisarmed>());
+MissionDirector::MissionDirector() {
+  // Set the backreference to the ROS2 wrapper
+    setWrapper(std::make_shared<MDROSWrapper>());
+    wrapper_->logInfo("Mission director initiated.");
 
-    // publishers
+    // Set initial state
+    SetState(std::make_shared<StateDisarmed>());
+}
 
-
-    // subscribers
-
-    // timer
-    timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(500), std::bind(&MissionDirector::timer_callback, this));
+void MissionDirector::setWrapper(std::shared_ptr<MDROSWrapper> wrapper) {
+    wrapper_ = wrapper;
+    wrapper_->logInfo("Setting Mission Director on ROS2 wrapper");
 }
 
 void MissionDirector::SetState(std::shared_ptr<State> new_state) {
     current_state_ = new_state;
-    RCLCPP_INFO(this->get_logger(), "State changed to %s", current_state_->getStateName().c_str());
+    wrapper_->logInfo("State changed to: " + current_state_->getStateName());
 }
 
-int main(int argc, char * argv[])
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<MissionDirector>());
-  rclcpp::shutdown();
-  return 0;
+void MissionDirector::execute() {
+    current_state_->runState();
 }
