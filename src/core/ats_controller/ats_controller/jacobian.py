@@ -2,7 +2,7 @@ from sympy import sin, cos, zeros, eye, symbols, sqrt, lambdify, Matrix
 import numpy as np
 
 
-class ATSJacobian():
+class CentralisedJacobian():
     yaw, pitch, roll, q_1, q_2, q_3 = symbols('yaw pitch roll q_1 q_2 q_3')
 
     # This geometric jacobian was derived in the am_kinematics repository with sympy.
@@ -130,3 +130,62 @@ class ATSJacobian():
             raise ValueError("Input must be a list or array of exactly six numbers [yaw, pitch, roll, q1, q2, q3] in radians.")
         self.state = values
 
+class ManipulatorJacobian:
+    q_1, q_2, q_3 = symbols('q_1 q_2 q_3')
+    # This geometric jacobian was derived in the am_kinematics repository with sympy.
+    jacobian = zeros(6, 3)
+
+    jacobian[0,1]=-(0.273*cos(q_3) + 0.311)*cos(q_2)
+    jacobian[0,2]=0.273*sin(q_2)*sin(q_3)
+    jacobian[1,0]=-0.273*sin(q_1)*sin(q_3) + 0.273*cos(q_1)*cos(q_2)*cos(q_3) + 0.311*cos(q_1)*cos(q_2) + 0.11*cos(q_1)
+    jacobian[1,1]=-0.273*sin(q_1)*sin(q_2)*cos(q_3) - 0.311*sin(q_1)*sin(q_2)
+    jacobian[1,2]=-0.273*sin(q_1)*sin(q_3)*cos(q_2) + 0.273*cos(q_1)*cos(q_3)
+    jacobian[2,0]=0.273*sin(q_1)*cos(q_2)*cos(q_3) + 0.311*sin(q_1)*cos(q_2) + 0.11*sin(q_1) + 0.273*sin(q_3)*cos(q_1)
+    jacobian[2,1]=0.273*sin(q_2)*cos(q_1)*cos(q_3) + 0.311*sin(q_2)*cos(q_1)
+    jacobian[2,2]=0.273*sin(q_1)*cos(q_3) + 0.273*sin(q_3)*cos(q_1)*cos(q_2)
+    jacobian[3,0]=sin(q_2)*cos(q_1)*cos(q_2)/(sin(q_1)**2*sin(q_2)**2 + cos(q_2)**2)
+    jacobian[3,1]=sin(q_1)*sin(q_2)**2/(sin(q_1)**2*sin(q_2)**2 + cos(q_2)**2) + sin(q_1)*cos(q_2)**2/(sin(q_1)**2*sin(q_2)**2 + cos(q_2)**2)
+    jacobian[4,0]=sin(q_1)*sin(q_2)/sqrt(-sin(q_2)**2*cos(q_1)**2 + 1)
+    jacobian[4,1]=-cos(q_1)*cos(q_2)/sqrt(-sin(q_2)**2*cos(q_1)**2 + 1)
+    jacobian[5,0]=(sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*(-sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3))/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2) + (-sin(q_1)*cos(q_3) - sin(q_3)*cos(q_1)*cos(q_2))*(sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1))/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2)
+    jacobian[5,1]=-(sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*sin(q_2)*sin(q_3)*cos(q_1)/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2) + (-sin(q_1)*cos(q_3) - sin(q_3)*cos(q_1)*cos(q_2))*sin(q_2)*cos(q_1)*cos(q_3)/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2)
+    jacobian[5,2]=(-sin(q_1)*sin(q_3) + cos(q_1)*cos(q_2)*cos(q_3))*(sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2) + (-sin(q_1)*cos(q_3) - sin(q_3)*cos(q_1)*cos(q_2))*(sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2)
+    def __init__(self):
+        self.jfunc = lambdify((self.q_1, self.q_2, self.q_3), self.jacobian, modules='numpy')
+
+        self.state = [0., 0., 0.]
+
+    def evaluate_jacobian(self):
+        """
+        Evaluate the expression with a list or NumPy array of states.
+
+
+        Returns:
+        - The evaluated result as a NumPy array.
+        """
+        return self.jfunc(*self.state)
+
+    def evaluate_pseudoinverse_jacobian(self):
+        """
+        Evaluate the pseudoinverse of the jacobian with a list or NumPy array of states.
+
+        Returns:
+        - The evaluated result as a NumPy array.
+        """
+        J = self.evaluate_jacobian(self.state)
+        J_pinv = np.matmul(J.transpose(),np.linalg.inv(np.matmul(J,J.transpose())))
+        return J_pinv
+
+    def update_state(self, values):
+        """
+        Update the state variables with a list or NumPy array of states.
+
+        Parameters:
+        - values: List or NumPy array of states (length 3).
+
+        Returns:
+        - None
+        """
+        if len(values) != 3:
+            raise ValueError("Input must be a list or array of exactly three numbers [q1, q2, q3] in radians.")
+        self.state = values

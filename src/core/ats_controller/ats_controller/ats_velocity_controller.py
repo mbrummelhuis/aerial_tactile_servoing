@@ -2,22 +2,48 @@ import rclpy
 from rclpy.node import Node
 import numpy as np
 
-from jacobian import ATSJacobian
+from geometry_msgs.msg import Vector3Stamped
+
+from jacobian import CentralisedJacobian
 
 class ATSVelocityController(Node):
     def __init__(self):
-        self.jacobian = ATSJacobian()
+        self.jacobian = CentralisedJacobian()
         self.K = np.eye(6)
 
         self.desired_ee_velocities = np.zeros(6)
 
         # Subscribers
-        self.state_subscription = self.create_subscription(
-            TwistStamped,
-            '/state/q1',
-            self.state_callback,
+        self.state_position_subscription = self.create_subscription(
+            Vector3Stamped,
+            '/state/position',
+            self.state_position_callback,
             10)
-        
+        self.state_orientation_subscription = self.create_subscription(
+            Vector3Stamped,
+            '/state/orientation',
+            self.state_orientation_callback,
+            10)
+        self.state_joint_positions_subscription = self.create_subscription(
+            Vector3Stamped,
+            '/state/joint_positions',
+            self.state_joint_position_callback,
+            10)
+        self.state_velocity_subscription = self.create_subscription(
+            Vector3Stamped,
+            '/state/velocity',
+            self.state_velocity_callback,
+            10)
+        self.state_angular_velocity_subscription = self.create_subscription(
+            Vector3Stamped,
+            '/state/angular_velocity',
+            self.state_angular_velocity_callback,
+            10)
+        self.state_joint_velocity_subscription = self.create_subscription(
+            Vector3Stamped,
+            '/state/joint_velocities',
+            self.state_joint_velocity_callback,
+            10)        
         self.ee_pose_referece = np.zeros(6)
 
         # Publishers
