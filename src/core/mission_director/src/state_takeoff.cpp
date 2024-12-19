@@ -33,10 +33,6 @@ void StateTakeoff::execute() {
     checkTransition();
 }
 
-void StateTakeoff::setVehicleAltitude(const DistanceSensor::SharedPtr msg) {
-    current_altitude_ = msg->current_distance;
-}
-
 // Check for and initiate transition if conditions are met
 void StateTakeoff::checkTransition() {
     // condition

@@ -25,15 +25,11 @@ void StateHover::execute() {
     context_.lock()->publishOffboardControlmode(std::make_shared<OffboardControlMode>(offboard_msg));
 
 	TrajectorySetpoint setpoint_msg{};
-	setpoint_msg.position = {0.0, 0.0, -2.0};
-	setpoint_msg.yaw = -3.14; // [-PI:PI]
+	setpoint_msg.position = {vehicle_local_position_.x, vehicle_local_position_.y, vehicle_local_position_.z};
+	setpoint_msg.yaw = vehicle_local_position_.heading; // [-PI:PI]
     context_.lock()->publishTrajectorySetpoint(std::make_shared<TrajectorySetpoint>(setpoint_msg));
 
     checkTransition();
-}
-
-void StateHover::setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg) {
-    current_position_ = msg->x;
 }
 
 // Check for and initiate transition if conditions are met

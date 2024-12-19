@@ -15,22 +15,32 @@ void StateDisarmed::execute() {
     checkTransition();
 }
 
-void StateDisarmed::setVehicleStatus(const VehicleStatus::SharedPtr msg) {
-    if (msg->arming_state == VehicleStatus::ARMING_STATE_ARMED) {
+void StateDisarmed::checkTransition() {
+    // Condition is armed and offboard
+    if (vehicle_status_.arming_state == VehicleStatus::ARMING_STATE_ARMED) {
+        if (is_armed_ = false) {
+            context_.lock()->logInfo("[State Disarmed] Arm detected.");
+        }
         is_armed_ = true;
     }
-    else {
+    else {        
+        if (is_armed_ = true) {
+            context_.lock()->logInfo("[State Disarmed] Disarm detected.");
+        }
         is_armed_ = false;
     }
-    if (msg->nav_state == VehicleStatus::NAVIGATION_STATE_OFFBOARD) {
+    if (vehicle_status_.nav_state == VehicleStatus::NAVIGATION_STATE_OFFBOARD) {
+        if (is_offboard_ = false) {
+            context_.lock()->logInfo("[State Disarmed] To offboard mode.");
+        }
         is_offboard_ = true;
     }
     else {
+        if (is_armed_ = true) {
+            context_.lock()->logInfo("[State Disarmed] Out of offboard mode.");
+        }
         is_offboard_ = false;
     }
-}
-
-void StateDisarmed::checkTransition() {
     if(is_armed_ && is_offboard_) {
         context_.lock()->setState(std::make_shared<StateTakeoff>());
     }

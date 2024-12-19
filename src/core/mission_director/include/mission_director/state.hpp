@@ -19,10 +19,10 @@ public:
     virtual void execute();
 
     // data setters
-    virtual void setVehicleStatus(const VehicleStatus::SharedPtr msg);
-    virtual void setVehicleAltitude(const DistanceSensor::SharedPtr msg);
-    virtual void setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg);
-    virtual void setVehicleLandDetected(const VehicleLandDetected::SharedPtr msg);
+    void setVehicleStatus(const VehicleStatus::SharedPtr msg);
+    void setVehicleAltitude(const DistanceSensor::SharedPtr msg);
+    void setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg);
+    void setVehicleLandDetected(const VehicleLandDetected::SharedPtr msg);
 
     std::string getStateName() const {
         return state_name_;
@@ -32,6 +32,12 @@ public:
 
 
     std::weak_ptr<MissionDirector> context_; // backreference to the mission director
+
+protected:
+    VehicleStatus vehicle_status_;
+    DistanceSensor vehicle_altitude_;
+    VehicleLocalPosition vehicle_local_position_;
+    VehicleLandDetected vehicle_land_detected_;
 };
 
 

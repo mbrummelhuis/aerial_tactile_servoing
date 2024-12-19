@@ -4,7 +4,6 @@
 // includes
 #include "rclcpp/rclcpp.hpp"
 
-
 #include <px4_msgs/msg/vehicle_status.hpp>
 #include <px4_msgs/msg/vehicle_command.hpp>
 #include <px4_msgs/msg/trajectory_setpoint.hpp>

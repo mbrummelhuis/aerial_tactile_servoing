@@ -10,9 +10,6 @@ public:
 
     void execute() override;
 
-    void setVehicleAltitude(const DistanceSensor::SharedPtr msg) override;
-    void setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg) override;
-    void setVehicleLandDetected(const VehicleLandDetected::SharedPtr msg) override;
     void checkTransition();
 private:
     std::string state_name_ = "Land";
@@ -25,8 +22,6 @@ private:
     float fixed_land_y_;
 
     float current_altitude_;
-    float current_local_x_;
-    float current_local_y_;
 
     bool is_landed_;
 

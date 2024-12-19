@@ -5,8 +5,8 @@
 StateLand::StateLand() : State() {
     is_landed_ = false;
     previous_altitude_ref_ = 0.0;
-    fixed_land_x_ = current_local_x_;
-    fixed_land_y_ = current_local_y_;
+    fixed_land_x_ = vehicle_local_position_.x;
+    fixed_land_y_ = vehicle_local_position_.y;
     frequency_ = context_.lock()->getFrequency();
 }
 
@@ -29,24 +29,6 @@ void StateLand::execute() {
     context_.lock()->publishTrajectorySetpoint(std::make_shared<TrajectorySetpoint>(setpoint_msg));
 
     checkTransition();
-}
-
-void StateLand::setVehicleAltitude(const DistanceSensor::SharedPtr msg) {
-    current_altitude_ = msg->current_distance;
-}
-
-void StateLand::setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg) {
-    current_local_x_ = msg->x;
-    current_local_y_ = msg->y;
-}
-
-void StateLand::setVehicleLandDetected(const VehicleLandDetected::SharedPtr msg) {
-    if (msg->landed == true) {
-        is_landed_ = true;
-    }
-    else {
-        is_landed_ = false;
-    }
 }
 
 void StateLand::checkTransition() {

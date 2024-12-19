@@ -10,17 +10,12 @@ public:
 
     void execute() override;
 
-    void setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg) override;
-
     void checkTransition() override;
 
 private:
     std::string state_name_ = "Hover";
 
     std::chrono::time_point<std::chrono::steady_clock> start_time_;
-
-    float current_position_ = 0.0;
-
 
     const int wait_time_ = 5; // seconds
 };

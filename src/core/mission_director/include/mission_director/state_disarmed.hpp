@@ -4,13 +4,13 @@
 #include "mission_director.hpp"
 #include "state_takeoff.hpp"
 
+#include "state.hpp"
+
 class StateDisarmed : public State {
 public:
     StateDisarmed() : State() {}
 
     void execute() override;
-
-    void setVehicleStatus(const VehicleStatus::SharedPtr msg) override;
 
     void checkTransition() override;
 

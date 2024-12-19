@@ -19,6 +19,10 @@ public:
 
 private:
     std::string state_name_ = "ATS";
+
+    std::chrono::time_point<std::chrono::steady_clock> start_time_;
+
+    const int wait_time_ = 60; // seconds
 };
 
 #endif // STATE_ATS_HPP

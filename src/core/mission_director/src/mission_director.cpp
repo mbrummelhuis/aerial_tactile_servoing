@@ -38,6 +38,7 @@ void MissionDirector::logInfo(std::string message) {
 }
 
 void MissionDirector::setState(std::shared_ptr<State> new_state) {
+    RCLCPP_INFO(this->get_logger(), "State changed to: %s", new_state->getStateName().c_str());
     current_state_ = new_state;
 }
 
