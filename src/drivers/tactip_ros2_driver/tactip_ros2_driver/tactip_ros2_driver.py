@@ -40,13 +40,13 @@ class TactipDriver(Node):
         msg.twist.angular.z = data[5]
         self.publisher_.publish(msg)
 
-    def test_model_execution_time(self, iterations = 1000000):
+    def test_model_execution_time(self, iterations = 1000):
         start_time = time.time()
         for i in range(iterations):
             processed_image = self.sensor.process()
             data = self.sensor.predict(processed_image)
-            self.get_logger().info(f"TacTip data: {data}")
-        self.get_logger().info(f"Time taken for {iterations} iterations: {time.time() - start_time}")
+        self.get_logger().info(f"Time taken for {iterations} iterations: {time.time() - start_time} [seconds]")
+        self.get_logger().info(f"Average time taken: {(time.time() - start_time)/iterations} [seconds]")
 
 def main(args=None):
     rclpy.init(args=args)

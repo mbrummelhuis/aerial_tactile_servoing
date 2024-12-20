@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-#from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory
 
 from .utils import load_json_obj
 from .utils_plots import LearningPlotter, RegressionPlotter
@@ -16,8 +16,8 @@ from .utils_plots import LearningPlotter, RegressionPlotter
 from .parse_args import parse_args
 
 # models are located one directory up and then in the models directory
-#package_share_dir = get_package_share_directory('tactip_ros2_driver')
-BASE_MODEL_PATH = os.path.join('model')
+package_share_dir = get_package_share_directory('tactip_ros2_driver')
+BASE_MODEL_PATH = os.path.join(package_share_dir, 'model')
 
 class LabelEncoder:
 
