@@ -11,15 +11,24 @@ from .dependencies.label_encoder import BASE_MODEL_PATH
 class TactipDriver(Node):
     def __init__(self):
         super().__init__('tactip_driver')
+
+        # Parameters
+        self.declare_parameter('source', 4)
+        self.declare_parameter('frequency', 10)
+        self.declare_parameter('test_model_time', False)
+
         self.get_logger().info("Tactip driver initialized")
         self.get_logger().info(BASE_MODEL_PATH)
         self.publisher_ = self.create_publisher(TwistStamped, '/sensors/tactip', 10)
 
         self.sensor = TacTip()
 
-        self.period = 0.1 # seconds
-        self.test_model_execution_time()
-        #self.timer = self.create_timer(self.period, self.timer_callback)
+        self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().integer_value) # seconds
+        if self.get_parameter('test_model_time').get_parameter_value().bool_value:
+            self.get_logger().info("Testing model execution time")
+            self.test_model_execution_time()
+        else:
+            self.timer = self.create_timer(self.period, self.timer_callback)
 
     def timer_callback(self):
         # read the data

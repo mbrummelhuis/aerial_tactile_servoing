@@ -39,13 +39,14 @@ class LabelledModel:
         predictions_dict = self.label_encoder.decode_label(outputs)
 
         # pack into array and report
-        print("\nPredictions: ", end="")
+        #print("\nPredictions: ", end="")
         predictions_arr = np.zeros(len(self.label_names))
         for label_name in self.target_label_names:
             predicted_val = predictions_dict[label_name].detach().cpu().numpy()
             predictions_arr[self.label_names.index(label_name)] = predicted_val
             with np.printoptions(precision=2, suppress=True):
-                print(label_name, predicted_val, end=" ")
+                #print(label_name, predicted_val, end=" ")
+                pass
 
         return predictions_arr
 
