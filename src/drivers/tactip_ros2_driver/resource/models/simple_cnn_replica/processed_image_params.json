@@ -1,0 +1,17 @@
+{
+    "type": "aerial-A3",
+    "source": 4,
+    "exposure": -7,
+    "gray": true,
+    "bbox": [
+        80,
+        15,
+        520,
+        455
+    ],
+    "circle_mask_radius": 250,
+    "thresh": [
+        33,
+        -39
+    ]
+}

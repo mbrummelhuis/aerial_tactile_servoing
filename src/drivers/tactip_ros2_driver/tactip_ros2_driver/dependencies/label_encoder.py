@@ -8,17 +8,20 @@ import numpy as np
 import pandas as pd
 import torch
 
-from dependencies.utils import load_json_obj
-from dependencies.utils_plots import LearningPlotter, RegressionPlotter
+#from ament_index_python.packages import get_package_share_directory
 
-from dependencies.parse_args import parse_args
+from .utils import load_json_obj
+from .utils_plots import LearningPlotter, RegressionPlotter
+
+from .parse_args import parse_args
 
 # models are located one directory up and then in the models directory
-BASE_MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models')
+#package_share_dir = get_package_share_directory('tactip_ros2_driver')
+BASE_MODEL_PATH = os.path.join('model')
 
 class LabelEncoder:
 
-    def __init__(self, task_params, device='cuda'):
+    def __init__(self, task_params, device='cpu'):
         self.device = device
         self.label_names = task_params['label_names']
         self.target_label_names = list(filter(None, task_params['target_label_names']))

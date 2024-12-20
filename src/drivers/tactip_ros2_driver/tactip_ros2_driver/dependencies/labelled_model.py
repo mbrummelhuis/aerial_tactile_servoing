@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 
-from dependencies.image_transforms import process_image
+from .image_transforms import process_image
 
 
 class LabelledModel:
@@ -10,7 +10,7 @@ class LabelledModel:
                  model,
                  image_processing_params,
                  label_encoder,
-                 device='cuda'
+                 device='cpu'
                  ):
         self.model = model
         self.image_processing_params = image_processing_params

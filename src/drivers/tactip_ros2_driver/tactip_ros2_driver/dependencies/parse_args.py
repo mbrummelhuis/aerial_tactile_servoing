@@ -13,7 +13,7 @@ def parse_args(
         model_version=[],
         objects=['circle'],
         run_version=[],
-        device='cuda'
+        device='cpu'
 ):
     parser = argparse.ArgumentParser()
 
