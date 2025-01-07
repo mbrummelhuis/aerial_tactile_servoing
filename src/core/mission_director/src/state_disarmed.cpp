@@ -3,7 +3,7 @@
 #include "state_disarmed.hpp"
 
 /* @brief Disarmed state
-            Waits until the drone is armed and put in offboard mode through the remote
+            Waits until the drone is armed and put in offboard mode through the remote control
  */
 StateDisarmed::StateDisarmed() : State() {
     is_armed_ = false;

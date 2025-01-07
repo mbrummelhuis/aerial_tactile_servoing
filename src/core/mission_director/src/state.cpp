@@ -23,3 +23,7 @@ void State::setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg) {
 void State::setVehicleLandDetected(const VehicleLandDetected::SharedPtr msg) {
     vehicle_land_detected_ = *msg;
 }
+
+void State::setTactileSensorPose(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+    tactile_sensor_pose_ = *msg;
+}

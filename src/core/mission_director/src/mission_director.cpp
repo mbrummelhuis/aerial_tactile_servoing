@@ -66,6 +66,11 @@ void MissionDirector::vehicleLandDetectedCallback(const VehicleLandDetected::Sha
     current_state_->setVehicleLandDetected(msg);
 }
 
+void MissionDirector::tactileSensorPoseCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->twist.linear.x);
+    current_state_->setTactileSensorPose(msg);
+}
+
 void MissionDirector::publishTrajectorySetpoint(TrajectorySetpoint::SharedPtr msg) {
 	msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
     publisher_trajectory_setpoint_->publish(*msg); // publish the message

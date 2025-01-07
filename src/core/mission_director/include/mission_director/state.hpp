@@ -23,6 +23,7 @@ public:
     void setVehicleAltitude(const DistanceSensor::SharedPtr msg);
     void setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg);
     void setVehicleLandDetected(const VehicleLandDetected::SharedPtr msg);
+    void setTactileSensorPose(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
 
     std::string getStateName() const {
         return state_name_;
@@ -38,6 +39,7 @@ protected:
     DistanceSensor vehicle_altitude_;
     VehicleLocalPosition vehicle_local_position_;
     VehicleLandDetected vehicle_land_detected_;
+    geometry_msgs::msg::TwistStamped tactile_sensor_pose_;
 };
 
 

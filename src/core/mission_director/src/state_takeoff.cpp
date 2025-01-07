@@ -6,15 +6,15 @@
 
 using namespace std::chrono;
 
-/* @brief Disarmed state
-            Waits until the drone is armed and put in offboard mode through the remote
+/* @brief Takeoff state
+            Lets drone take off to reference altitude.
  */
 StateTakeoff::StateTakeoff() : State() {
-    reference_altitude_ = 0.0;
-    current_altitude_ = 0.0;
+    reference_altitude_ = -2.0; // [m] positive down, NED
 }
 
-/* @brief Execute the state logic: Set offboard position mode and publish position setpoint
+/* @brief Execute the state logic: Set offboard position mode and publish position setpoint at desired altitude. 
+            Then check state transition.
 */
 void StateTakeoff::execute() {
     OffboardControlMode offboard_msg{};
@@ -26,7 +26,7 @@ void StateTakeoff::execute() {
     context_.lock()->publishOffboardControlmode(std::make_shared<OffboardControlMode>(offboard_msg));
 
 	TrajectorySetpoint setpoint_msg{};
-	setpoint_msg.position = {0.0, 0.0, -2.0};
+	setpoint_msg.position = {0.0, 0.0, reference_altitude_};
 	setpoint_msg.yaw = -3.14; // [-PI:PI]
     context_.lock()->publishTrajectorySetpoint(std::make_shared<TrajectorySetpoint>(setpoint_msg));
 
@@ -36,7 +36,7 @@ void StateTakeoff::execute() {
 // Check for and initiate transition if conditions are met
 void StateTakeoff::checkTransition() {
     // condition
-    if (current_altitude_ - reference_altitude_ > margin_altitude_) {
+    if (vehicle_local_position_.z - reference_altitude_ > margin_altitude_) {
         context_.lock()->setState(std::make_shared<StateHover>());
     }
 }
