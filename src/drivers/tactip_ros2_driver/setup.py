@@ -1,6 +1,5 @@
 from setuptools import find_packages, setup
 from glob import glob
-from ament_index_python.packages import get_package_share_directory
 
 package_name = 'tactip_ros2_driver'
 
