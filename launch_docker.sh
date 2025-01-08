@@ -6,5 +6,6 @@
 # --network -- connect the container to the host network (when set as host)
 # -- ipc=host -- connect the container to the host IPC namespace
 # -v -- mount a volume
+# --device -- pass a device to the container, put the device path here (tactips, serial for FCU, serial for servos). Check out articulated robotics video 'devices in docker' for more info
 
-docker run -rm -it --user ros2 --name ats-container --network=host --ipc=host
+docker run -rm -it --user ros2 --name ats-container --network=host --ipc=host --device=/dev/videoxx

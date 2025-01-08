@@ -11,8 +11,11 @@ ENV ROS_DISTRO=humble
 RUN apt-get update && apt-get install -y \
     build-essential \
     python3-colcon-common-extensions \
+    python3-argcomplete \
+    bash-completion \ 
     git \
     nano \
+    terminator \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
@@ -34,12 +37,13 @@ RUN apt-get update && apt-get install -y sudo \
 
 # Copy the entrypoint into the container root
 COPY /docker/entrypoint.sh /entrypoint.sh
+COPY /docker/bashrc /home/$USERNAME/.bashrc
 
 # Define entrypoint bash script
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
-# Set the default command to bash
-CMD ["bash"]
+# Set the default command to bash (delete this line if you want to run something else)
+CMD ["terminator"]
 
 # Set user to ros2
 USER USERNAME
@@ -53,9 +57,6 @@ COPY src /ros2_ws/src
 # Install any ROS 2 package dependencies
 RUN apt-get update && rosdep update \
     && rosdep install --from-paths src --ignore-src -r -y
-
-# Source the ROS 2 setup file
-RUN source /opt/ros/humble/setup.bash
 
 # Build the workspace
 RUN colcon build --symlink-install
