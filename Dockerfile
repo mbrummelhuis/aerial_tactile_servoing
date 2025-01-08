@@ -46,7 +46,7 @@ ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 CMD ["terminator"]
 
 # Set user to ros2
-USER USERNAME
+USER $USERNAME
 
 # Set up the workspace directory in the container
 WORKDIR /ros2_ws
@@ -55,8 +55,8 @@ WORKDIR /ros2_ws
 COPY src /ros2_ws/src
 
 # Install any ROS 2 package dependencies
-RUN apt-get update && rosdep update \
-    && rosdep install --from-paths src --ignore-src -r -y
+#RUN apt-get update && rosdep update \
+#    && rosdep install --from-paths src --ignore-src -r -y
 
 # Build the workspace
-RUN colcon build --symlink-install
+#RUN colcon build --symlink-install
