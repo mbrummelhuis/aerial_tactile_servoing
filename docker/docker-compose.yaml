@@ -1,12 +1,8 @@
 version: "3.8" # Docker version
+
 services:
-  # Service 1
-  service1:
-    image: service1:latest
-    container_name: service1
-    ports:
-      - "5000:5000"
-    networks:
-      - my_network
-    depends_on:
-      - service2
+  aerial-tactile-servoing-controller:
+    image: mbrummelhuis/ats-dev::latest
+    privileged: true
+    network_mode: 'host'
+    command: serial --dev /dev/ttyACM0 -b 921600 # Look up what this means

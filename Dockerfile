@@ -12,11 +12,13 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     python3-colcon-common-extensions \
     python3-argcomplete \
-    bash-completion \ 
+    bash-completion \
+    ros-humble-ament-cmake-clang-format \
     git \
     nano \
     terminator \
     python3-pip \
+    python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure user
@@ -35,10 +37,6 @@ RUN apt-get update && apt-get install -y sudo \
     && chmod 0440 /etc/sudoers.d/$USERNAME \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the entrypoint into the container root
-COPY /docker/entrypoint.sh /entrypoint.sh
-COPY /docker/bashrc /home/$USERNAME/.bashrc
-
 # Switch user from root to $USERNAME
 USER $USERNAME
 
@@ -54,10 +52,14 @@ RUN pip3 install -U \
     matplotlib==3.9.2 \
     seaborn==0.13.2
 
-
+# Copy the entrypoint into the container root
+# Should be ./entrypoint for docker build instead of devcontainter
+COPY docker/entrypoint.sh /entrypoint.sh 
+COPY docker/bashrc /home/$USERNAME/.bashrc
 
 # Change working directory to /ros2_ws
 WORKDIR /ros2_ws
+RUN sudo chmod 777 -R .
 
 # Copy the workspace source code into the container
 #COPY src src
@@ -65,12 +67,14 @@ WORKDIR /ros2_ws
 # Define entrypoint bash script
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
-# Set the default command to bash (delete this line if you want to run something else)
-CMD ["terminator"]
+# Get the repository
+RUN git clone --depth 1 --recursive https://github.com/mbrummelhuis/aerial_tactile_servoing.git
+
+WORKDIR /ros2_ws/aerial_tactile_servoing
 
 # Install any ROS 2 package dependencies
-#RUN apt-get update && rosdep update \
-#    && rosdep install --from-paths src --ignore-src -r -y
+RUN rosdep update \
+    && rosdep install --from-paths src --ignore-src -r -y
 
 # Build the workspace
-#RUN colcon build --symlink-install
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"

@@ -27,3 +27,12 @@ ros2 launch ats_bringup your-launch-file.launch.py
 
 ### Docker instructions
 The aim is that we can deploy the repository by installing docker, pulling the image from Dockerhub and then run the container, pulling the src from this repo into a ROS2 workspace, and finally colcon building.
+
+To run the container
+- Install docker and docker compose on the machine
+- Pull this repository
+- navigate to the docker folder
+- run docker compose up
+
+To build the image
+- 
