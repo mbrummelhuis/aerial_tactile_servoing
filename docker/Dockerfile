@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure user
-ARG USERNAME=ros2
+ARG USERNAME=ats-devcontainer
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
@@ -39,20 +39,34 @@ RUN apt-get update && apt-get install -y sudo \
 COPY /docker/entrypoint.sh /entrypoint.sh
 COPY /docker/bashrc /home/$USERNAME/.bashrc
 
+# Switch user from root to $USERNAME
+USER $USERNAME
+
+# Install python dependencies (for TacTip driver)
+RUN pip3 install -U \
+    numpy==2.2.0 \
+    opencv-python==4.10.0.84 \
+    scikit-image==0.24.0 \
+    torch==2.5.1 \
+    pytorch-model-summary==0.1.2 \
+    vit-pytorch==1.8.8 \
+    pandas==2.2.3 \
+    matplotlib==3.9.2 \
+    seaborn==0.13.2
+
+
+
+# Change working directory to /ros2_ws
+WORKDIR /ros2_ws
+
+# Copy the workspace source code into the container
+#COPY src src
+
 # Define entrypoint bash script
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
 # Set the default command to bash (delete this line if you want to run something else)
 CMD ["terminator"]
-
-# Set user to ros2
-USER $USERNAME
-
-# Set up the workspace directory in the container
-WORKDIR /ros2_ws
-
-# Copy the workspace source code into the container
-COPY src /ros2_ws/src
 
 # Install any ROS 2 package dependencies
 #RUN apt-get update && rosdep update \

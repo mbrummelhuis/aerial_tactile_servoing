@@ -10,7 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <!-- Packages called in launch files -->
-  <exec_depend>mission_director</exec_depend>
+  <!-- exec_depend>mission_director</exec_depend-->
 
 
   <test_depend>ament_lint_auto</test_depend>

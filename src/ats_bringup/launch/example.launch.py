@@ -12,11 +12,4 @@ The package can be launched with 'ros2 launch tucan_bringup example.launch.py'
 def generate_launch_description():
     ld = LaunchDescription()
     
-    ar_detection_node = Node(
-        package='cv_aruco_detector',
-        executable='cv_aruco_detector',
-    )
-    
-    ld.add_action(ar_detection_node)
-    
     return ld

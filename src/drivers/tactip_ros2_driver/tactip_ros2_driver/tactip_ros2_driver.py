@@ -27,8 +27,7 @@ class TactipDriver(Node):
         if self.get_parameter('test_model_time').get_parameter_value().bool_value:
             self.get_logger().info("Testing model execution time")
             self.test_model_execution_time()
-        else:
-            self.timer = self.create_timer(self.period, self.timer_callback)
+        self.timer = self.create_timer(self.period, self.timer_callback)
 
     def timer_callback(self):
         # read the data
