@@ -6,12 +6,13 @@ from geometry_msgs.msg import Vector3Stamped
 
 from jacobian import CentralisedJacobian
 
-class ATSVelocityController(Node):
+class InverseDifferentialKinematics(Node):
     """
     This class implements the velocity controller for the aerial tactile servoing experiment.
     The controller is based on Closed-Loop Inverse Kinematics to go from a commanded end-effector pose to state velocity references.
     """
     def __init__(self):
+        super().__init__('inverse_differential_kinematics')
         self.jacobian = CentralisedJacobian()
         self.K = np.eye(6)
 
@@ -165,7 +166,7 @@ class ATSVelocityController(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = ATSVelocityController()
+    node = InverseDifferentialKinematics()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

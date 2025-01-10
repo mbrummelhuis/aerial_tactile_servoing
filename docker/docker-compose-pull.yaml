@@ -1,5 +1,6 @@
 version: "3.8" # Docker version
 
+# Pulls the image from Docker Hub
 services:
   aerial-tactile-servoing-controller:
     image: mbrummelhuis/ats-dev::latest

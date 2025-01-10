@@ -19,6 +19,7 @@ setup(
         'numpy',
         'opencv-python',
         'rclpy',
+        'torch'
         ],
     zip_safe=True,
     maintainer='Martijn Brummelhuis',

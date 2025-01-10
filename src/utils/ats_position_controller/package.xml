@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>ats_controller</name>
-  <version>0.0.1</version>
-  <description>Controller package for aerial tactile servoing project</description>
+  <name>ats_position_controller</name>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
   <maintainer email="mbrummelhuis@gmail.com">martijn</maintainer>
-  <license>GPL-3.0-only</license>
+  <license>TODO: License declaration</license>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

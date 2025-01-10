@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'ats_controller'
+package_name = 'ats_position_controller'
 
 setup(
     name=package_name,
@@ -15,8 +15,8 @@ setup(
     zip_safe=True,
     maintainer='martijn',
     maintainer_email='mbrummelhuis@gmail.com',
-    description='Controller package for aerial tactile servoing project',
-    license='GPL-3.0-only',
+    description='TODO: Package description',
+    license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

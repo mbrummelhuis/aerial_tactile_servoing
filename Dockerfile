@@ -1,8 +1,9 @@
 # Use an official ROS 2 base image (e.g., Humble Hawksbill on Ubuntu 22.04)
-FROM osrf/ros:humble-desktop-full-jammy
+# We use 
+FROM ros:humble-ros-base
 
 # Set the shell to bash (required for ROS 2 sourcing)
-RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+# RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
 # Set environment variables
 ENV ROS_DISTRO=humble
@@ -29,13 +30,14 @@ ARG USER_GID=$USER_UID
 # Create the user
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd -s /bin/bash --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    && mkdir /home/$USERNAME/ros2_ws && chown $USER_UID:$USER_GID /home/$USERNAME/ros2_ws
+    && mkdir /home/$USERNAME/ros2_ws \
+    && chown $USER_UID:$USER_GID /home/$USERNAME/ros2_ws
 
-# Set up sudo
-RUN apt-get update && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME \
-    && rm -rf /var/lib/apt/lists/*
+# Set up sudo (ChatGPT says it's better not to but Articulated Robotics guy does it)
+#RUN apt-get update && apt-get install -y sudo \
+#    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+#    && chmod 0440 /etc/sudoers.d/$USERNAME \
+#    && rm -rf /var/lib/apt/lists/*
 
 # Switch user from root to $USERNAME
 USER $USERNAME
@@ -59,7 +61,7 @@ COPY docker/bashrc /home/$USERNAME/.bashrc
 
 # Change working directory to /ros2_ws
 WORKDIR /ros2_ws
-RUN sudo chmod 777 -R .
+#RUN sudo chmod 777 -R .
 
 # Copy the workspace source code into the container
 #COPY src src
@@ -68,7 +70,8 @@ RUN sudo chmod 777 -R .
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
 # Get the repository
-RUN git clone --depth 1 --recursive https://github.com/mbrummelhuis/aerial_tactile_servoing.git
+ARG REPO_URL=https://github.com/mbrummelhuis/aerial_tactile_servoing.git
+RUN git clone --depth 1 --recursive $REPO_URL
 
 WORKDIR /ros2_ws/aerial_tactile_servoing
 
@@ -77,4 +80,12 @@ RUN rosdep update \
     && rosdep install --from-paths src --ignore-src -r -y
 
 # Build the workspace
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk_custom_interfaces"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk_examples"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select mission_director"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select tactip_ros2_driver"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select ats_controller"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select ats_bringup"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select px4_msgs"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select fcu_interface"
