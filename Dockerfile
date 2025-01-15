@@ -22,6 +22,11 @@ RUN apt-get update && apt-get install -y \
     python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
 
+# Set up all the services for interfacing with FCU (as root)
+ARG SETUP_REPO_URL=https://github.com/mbrummelhuis/ats-setup.git
+RUN git clone --depth 1 $SETUP_REPO_URL
+RUN /bin/bash -c "sudo ats-setup/install.sh"
+
 # Configure user
 ARG USERNAME=ats-devcontainer
 ARG USER_UID=1000
@@ -71,7 +76,7 @@ ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
 # Get the repository
 RUN ls -ld /ros2_ws && whoami
-ARG REPO_URL=https://github.com/mbrummelhuis/aerial_tactile_servoing.git
+ARG ROS2_REPO_URL=https://github.com/mbrummelhuis/aerial_tactile_servoing.git
 RUN git clone --depth 1 --recursive $REPO_URL
 
 WORKDIR /ros2_ws/aerial_tactile_servoing
