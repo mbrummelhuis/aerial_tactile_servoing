@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'ats-navigation'
+package_name = 'ats_planner'
 
 setup(
     name=package_name,
@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'ats-navigation-node = ats-navigation.ats-navigator:main',
+            'ats_planner-node = ats_planner.ats_planner:main',
         ],
     },
 )
