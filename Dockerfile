@@ -33,11 +33,11 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && mkdir /home/$USERNAME/ros2_ws \
     && chown $USER_UID:$USER_GID /home/$USERNAME/ros2_ws
 
-# Set up sudo (ChatGPT says it's better not to but Articulated Robotics guy does it)
-#RUN apt-get update && apt-get install -y sudo \
-#    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-#    && chmod 0440 /etc/sudoers.d/$USERNAME \
-#    && rm -rf /var/lib/apt/lists/*
+# Set up sudo
+RUN apt-get update && apt-get install -y sudo \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME \
+    && rm -rf /var/lib/apt/lists/*
 
 # Switch user from root to $USERNAME
 USER $USERNAME
@@ -61,7 +61,7 @@ COPY docker/bashrc /home/$USERNAME/.bashrc
 
 # Change working directory to /ros2_ws
 WORKDIR /ros2_ws
-#RUN sudo chmod 777 -R .
+RUN sudo chmod 777 -R .
 
 # Copy the workspace source code into the container
 #COPY src src
@@ -70,6 +70,7 @@ WORKDIR /ros2_ws
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
 # Get the repository
+RUN ls -ld /ros2_ws && whoami
 ARG REPO_URL=https://github.com/mbrummelhuis/aerial_tactile_servoing.git
 RUN git clone --depth 1 --recursive $REPO_URL
 
@@ -80,12 +81,15 @@ RUN rosdep update \
     && rosdep install --from-paths src --ignore-src -r -y
 
 # Build the workspace
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk"
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk_custom_interfaces"
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk_examples"
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select mission_director"
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select tactip_ros2_driver"
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select ats_controller"
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select ats_bringup"
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select px4_msgs"
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select fcu_interface"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
+
+# Uncomment to build separately
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk_custom_interfaces"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk_examples"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select mission_director"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select tactip_ros2_driver"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select ats_controller"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select ats_bringup"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select px4_msgs"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select fcu_interface"
