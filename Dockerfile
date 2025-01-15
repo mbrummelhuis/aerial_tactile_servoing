@@ -22,11 +22,6 @@ RUN apt-get update && apt-get install -y \
     python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
 
-# Set up all the services for interfacing with FCU (as root)
-ARG SETUP_REPO_URL=https://github.com/mbrummelhuis/ats-setup.git
-RUN git clone --depth 1 $SETUP_REPO_URL
-RUN /bin/bash -c "sudo ats-setup/install.sh"
-
 # Configure user
 ARG USERNAME=ats-devcontainer
 ARG USER_UID=1000
@@ -60,8 +55,6 @@ RUN pip3 install -U \
     seaborn==0.13.2
 
 # Copy the entrypoint into the container root
-# Should be ./entrypoint for docker build instead of devcontainter
-COPY docker/entrypoint.sh /entrypoint.sh 
 COPY docker/bashrc /home/$USERNAME/.bashrc
 
 # Change working directory to /ros2_ws
@@ -71,12 +64,8 @@ RUN sudo chmod 777 -R .
 # Copy the workspace source code into the container
 #COPY src src
 
-# Define entrypoint bash script
-ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
-
 # Get the repository
-RUN ls -ld /ros2_ws && whoami
-ARG ROS2_REPO_URL=https://github.com/mbrummelhuis/aerial_tactile_servoing.git
+ARG REPO_URL=https://github.com/mbrummelhuis/aerial_tactile_servoing.git
 RUN git clone --depth 1 --recursive $REPO_URL
 
 WORKDIR /ros2_ws/aerial_tactile_servoing
@@ -88,13 +77,13 @@ RUN rosdep update \
 # Build the workspace
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
 
-# Uncomment to build separately
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk"
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk_custom_interfaces"
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select dynamixel_sdk_examples"
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select mission_director"
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select tactip_ros2_driver"
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select ats_controller"
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select ats_bringup"
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select px4_msgs"
-#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --packages-select fcu_interface"
+# Copy bashrc for argument completion
+COPY docker/bashrc /home/$USERNAME/.bashrc
+
+# Define entrypoint bash script
+# Should be ./entrypoint for docker build instead of devcontainter
+COPY docker/entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
+
+# CMD is executed and replaced to any arguments passed
+CMD [ "Please specify a ROS2 launch package and file: <package name> <launch file>" ]

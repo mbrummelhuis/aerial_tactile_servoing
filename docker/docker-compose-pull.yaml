@@ -1,15 +1,35 @@
-version: "3.8" # Docker version
-
-# Pulls the image from Docker Hub
+# Builds the image from the Dockerfile
 services:
   aerial-tactile-servoing-controller:
-    image: mbrummelhuis/ats-dev::latest
+    image: mbrummelhuis/ats-dev:latest
+    container_name: aerial-tactile-servoing-container
     privileged: true
-    network_mode: 'host'
-    command: serial --dev /dev/ttyACM0 -b 921600 # Look up what this means
+    network_mode: 'host' # share host network
+    environment:
+      - ROS_DOMAIN_ID=75
+    devices:
+      - "/dev/video1:/dev/video1" # share video device for tactip
+      - "/dev/ttyUSB0:/dev/ttyUSB0" # share USB device for servos
+    command: ats_bringup test_tactip.launch.py
 
-  # UXRCE agent service by Anton -- Image has agent built in
+  # UXRCE agent service
   urxce-agent:
     image: antbre/uxrce_agent:latest
+    privileged: true
+    network_mode: 'host'
+    command: udp4 -p 8888 
+  
+  # Mavlink router for QGC
+  mavlink-router:
+    image: mbrummelhuis/mavlink_router:latest
+    privileged: true
+    network_mode: 'host'
+    devices:
+      - "/dev/ttyS1:/dev/ttyS1"
+  
+  # Zenoh bridge for ROS2 network sharing
+  # Only needed when using tailscale i.e. when not using optitrack
+  zenoh-bridge:
+    image: eclipse/zenoh-bridge-ros2dds:latest
     privileged: true
     network_mode: 'host'
