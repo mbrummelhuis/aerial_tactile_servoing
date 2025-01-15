@@ -3,7 +3,16 @@ version: "3.8" # Docker version
 # Builds the image from the Dockerfile
 services:
   aerial-tactile-servoing-controller:
-    build: ../
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: aerial-tactile-servoing-container
+    privileged: true
+    network_mode: 'host' # share host network
+    command: serial --dev /dev/ttyACM0 -b 921600 # Look up what this means
+
+  # UXRCE agent service by Anton -- Image has agent built in
+  urxce-agent:
+    image: antbre/uxrce_agent:latest
     privileged: true
     network_mode: 'host'
-    command: serial --dev /dev/ttyACM0 -b 921600 # Look up what this means
