@@ -29,7 +29,8 @@
 
 #include <cstdio>
 #include <memory>
-#include <string>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
+#include <wiringPi.h>
 
 #include "dynamixel_sdk/dynamixel_sdk.h"
 #include "dynamixel_sdk_custom_interfaces/msg/set_position.hpp"
@@ -37,11 +38,11 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rcutils/cmdline_parser.h"
 
-#include "driver_feetech_servo.hpp"
+#include "driver_feetech_servo/driver_feetech_servo.hpp"
 
 // Control table addresses for Feetech STS
-#define ADDR_OPERATING_MODE 33 // 0: position, 1: speed
-#define ADDR_TORQUE_ENABLE 64
+#define ADDR_OPERATING_MODE 33 // 0: position, 1: velocity
+#define ADDR_TORQUE_ENABLE 40 // 0: torque disable, 1: torque enable
 #define ADDR_GOAL_POSITION 42
 #define ADDR_PRESENT_POSITION 56
 #define ADDR_GOAL_SPEED 46
@@ -59,158 +60,149 @@
 #define BAUDRATE 1000000  // Default Baudrate of DYNAMIXEL X series
 #define DEVICE_NAME "/dev/ttyUSB1"  // [Linux]: "/dev/ttyUSB*"
 
-dynamixel::PortHandler * portHandler;
-dynamixel::PacketHandler * packetHandler;
+// Modes
+#define POSITION_MODE 0
+#define VELOCITY_MODE 1
 
-uint8_t dxl_error = 0;
-uint32_t goal_position = 0;
-int dxl_comm_result = COMM_TX_FAIL;
+uint8_t error_code = 0;
+int comm_result = COMM_TX_FAIL;
+
+using std::placeholders::_1;
 
 DriverFeetechServo::DriverFeetechServo()
 : Node("driver_feetech_servo")
 {
   RCLCPP_INFO(this->get_logger(), "Started Feetech servo driver node");
 
+  // QoS settings
   this->declare_parameter("qos_depth", 10);
   int8_t qos_depth = 0;
   this->get_parameter("qos_depth", qos_depth);
-
   const auto QOS_RKL10V =
     rclcpp::QoS(rclcpp::KeepLast(qos_depth)).reliable().durability_volatile();
 
-  set_position_subscriber_ =
-    this->create_subscription<SetPosition>(
-    "set_position",
-    QOS_RKL10V,
-    [this](const SetPosition::SharedPtr msg) -> void
-    {
-      uint8_t dxl_error = 0;
+  // Subscriptions
+  // Subscribe to topic to set mode and to topic to set reference (i.e. reference--> one messag for all servos)
+  reference_servo_position_subscriber_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/servo/in/reference_position", 10, std::bind(&DriverFeetechServo::referenceServoPositionCallback, this, _1));
+  reference_servo_velocity_subscriber_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/servo/in/reference_velocity", 10, std::bind(&DriverFeetechServo::referenceServoVelocityCallback, this, _1));
 
-      // Position Value of X series is 4 byte data.
-      // For AX & MX(1.0) use 2 byte data(uint16_t) for the Position Value.
-      uint32_t goal_position = (unsigned int)msg->position;  // Convert int32 -> uint32
+  // Publishers
+  // Publish relevant information i.e. servo position (calculate in this node?), velocity, torque etc.
+  current_servo_position_publisher_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("/servo/out/current_position", 10);
+  current_servo_velocity_publisher_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("/servo/out/current_velocity", 10);
+  
 
-      // Write Goal Position (length : 4 bytes)
-      // When writing 2 byte data to AX / MX(1.0), use write2ByteTxRx() instead.
-      dxl_comm_result =
-      packetHandler->write4ByteTxRx(
-        portHandler,
-        (uint8_t) msg->id,
-        ADDR_GOAL_POSITION,
-        goal_position,
-        &dxl_error
-      );
+  // Services
 
-      if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_INFO(this->get_logger(), "%s", packetHandler->getTxRxResult(dxl_comm_result));
-      } else if (dxl_error != 0) {
-        RCLCPP_INFO(this->get_logger(), "%s", packetHandler->getRxPacketError(dxl_error));
-      } else {
-        RCLCPP_INFO(this->get_logger(), "Set [ID: %d] [Goal Position: %d]", msg->id, msg->position);
-      }
-    }
-    );
-
-  auto get_present_position =
-    [this](
-    const std::shared_ptr<GetPosition::Request> request,
-    std::shared_ptr<GetPosition::Response> response) -> void
-    {
-      // Read Present Position (length : 4 bytes) and Convert uint32 -> int32
-      // When reading 2 byte data from AX / MX(1.0), use read2ByteTxRx() instead.
-      dxl_comm_result = packetHandler->read4ByteTxRx(
-        portHandler,
-        (uint8_t) request->id,
-        ADDR_PRESENT_POSITION,
-        reinterpret_cast<uint32_t *>(&present_position),
-        &dxl_error
-      );
-
-      RCLCPP_INFO(
-        this->get_logger(),
-        "Get [ID: %d] [Present Position: %d]",
-        request->id,
-        present_position
-      );
-
-      response->position = present_position;
-    };
-
-  get_position_server_ = create_service<GetPosition>("get_position", get_present_position);
+  // Initialize Servos
+  InitializeServos();
 }
 
-void setupDynamixel(uint8_t dxl_id)
+/* Set servo control mode
+ * @param servo_id: ID of the servo
+ * @param mode: 0 for position mode, 1 for velocity mode
+ */
+int DriverFeetechServo::setMode(int servo_id, int mode)
 {
-  // Use Position Control Mode
-  dxl_comm_result = packetHandler->write1ByteTxRx(
+  // Set all servos to position mode
+  comm_result = packetHandler->write1ByteTxRx(
     portHandler,
-    dxl_id,
+    servo_id,
     ADDR_OPERATING_MODE,
-    3,
-    &dxl_error
+    mode,
+    &error_code
   );
 
-  if (dxl_comm_result != COMM_SUCCESS) {
-    RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to set Position Control Mode.");
+  if (comm_result != COMM_SUCCESS) {
+    RCLCPP_ERROR(this->get_logger(), "Failed to set Position Control Mode.Error code {error_code}");
+    return -1;
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to set Position Control Mode.");
+    RCLCPP_INFO(this->get_logger(), "Succeeded to set control mode to {mode}.");
+    control_mode_ = mode;
+    return 0;
   }
+};
 
-  // Enable Torque of DYNAMIXEL
-  dxl_comm_result = packetHandler->write1ByteTxRx(
-    portHandler,
-    dxl_id,
-    ADDR_TORQUE_ENABLE,
-    1,
-    &dxl_error
-  );
-
-  if (dxl_comm_result != COMM_SUCCESS) {
-    RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to enable torque.");
+int DriverFeetechServo::setReference(int servo_id, int reference)
+{
+  // Write goal position
+  if (control_mode_ == POSITION_MODE)
+  {
+    comm_result = packetHandler->write2ByteTxRx(
+      portHandler,
+      servo_id,
+      ADDR_GOAL_POSITION,
+      reference,
+      &error_code
+    );
+  }
+  else if (control_mode_ == VELOCITY_MODE)
+  {
+    comm_result = packetHandler->write2ByteTxRx(
+      portHandler,
+      servo_id,
+      ADDR_GOAL_SPEED,
+      reference,
+      &error_code
+    );
+  }
+  if (comm_result != COMM_SUCCESS) {
+    RCLCPP_ERROR(this->get_logger(), "Failed to set reference. Error code {error_code}");
+    return -1;
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to enable torque.");
+    RCLCPP_INFO(this->get_logger(), "Succeeded to set reference.");
+    return 0;
   }
+};
+
+int DriverFeetechServo::Home()
+{
+  RCLCPP_INFO(this->get_logger(), "Homing servos");
 }
 
-int main(int argc, char * argv[])
+/*
+ * Initialize Servos
+ */
+int DriverFeetechServo::InitializeServos()
 {
+  // Set PortHandler and PacketHandler
   portHandler = dynamixel::PortHandler::getPortHandler(DEVICE_NAME);
   packetHandler = dynamixel::PacketHandler::getPacketHandler(PROTOCOL_VERSION);
 
   // Open Serial Port
-  dxl_comm_result = portHandler->openPort();
-  if (dxl_comm_result == false) {
-    RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to open the port!");
+  comm_result = portHandler->openPort();
+  if (comm_result == false) {
+    RCLCPP_ERROR(rclcpp::get_logger("driver_feetech_servo"), "Failed to open the port!");
     return -1;
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to open the port.");
+    RCLCPP_INFO(rclcpp::get_logger("driver_feetech_servo"), "Succeeded to open the port.");
   }
 
-  // Set the baudrate of the serial port (use DYNAMIXEL Baudrate)
-  dxl_comm_result = portHandler->setBaudRate(BAUDRATE);
-  if (dxl_comm_result == false) {
-    RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to set the baudrate!");
+  // Set the baudrate of the serial port
+  comm_result = portHandler->setBaudRate(BAUDRATE);
+  if (comm_result == false) {
+    RCLCPP_ERROR(rclcpp::get_logger("driver_feetech_servo"), "Failed to set the baudrate!");
     return -1;
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to set the baudrate.");
+    RCLCPP_INFO(rclcpp::get_logger("driver_feetech_servo"), "Succeeded to set the baudrate.");
   }
 
-  setupDynamixel(BROADCAST_ID);
+  // homing
 
+  // Set all servos to position mode
+
+  // Set all servos to torque enable
+
+
+
+};
+
+int main(int argc, char * argv[])
+{
   rclcpp::init(argc, argv);
-
-  auto readwritenode = std::make_shared<ReadWriteNode>();
-  rclcpp::spin(readwritenode);
+  auto driverfeetechservo = std::make_shared<DriverFeetechServo>();
+  rclcpp::spin(driverfeetechservo);
   rclcpp::shutdown();
-
-  // Disable Torque of DYNAMIXEL
-  packetHandler->write1ByteTxRx(
-    portHandler,
-    BROADCAST_ID,
-    ADDR_TORQUE_ENABLE,
-    0,
-    &dxl_error
-  );
 
   return 0;
 }

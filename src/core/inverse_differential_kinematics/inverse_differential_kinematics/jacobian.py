@@ -64,6 +64,21 @@ class CentralisedJacobian():
         self.T_A_func = lambdify((self.yaw, self.pitch), self.T_A, modules='numpy')
 
         self.state = [0., 0., 0., 0., 0., 0.]
+    
+    def set_state(self, new_state : dict):
+        """
+        Set the state variables with a list or NumPy array of states.
+
+        Parameters:
+        - new_state: Dict of states.
+
+        """
+        self.state[0] = new_state['yaw']
+        self.state[1] = new_state['pitch']
+        self.state[2] = new_state['roll']
+        self.state[3] = new_state['q1']
+        self.state[4] = new_state['q2']
+        self.state[5] = new_state['q3']
 
     def evaluate_full_jacobian(self):
         """

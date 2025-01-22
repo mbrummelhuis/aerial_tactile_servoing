@@ -36,10 +36,37 @@ public:
   virtual ~DriverFeetechServo();
 
 private:
+  // functions
+  int InitializeServos();
+  int Home();
+  int setMode(int servo_id, int mode);
+  int setReference(int servo_id, int reference);
+
+  // services
   rclcpp::Subscription<SetPosition>::SharedPtr set_position_subscriber_;
   rclcpp::Service<GetPosition>::SharedPtr get_position_server_;
 
-  int present_position;
+  // publishers
+  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr current_servo_position_publisher_;
+  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr current_servo_velocity_publisher_;
+
+  // subscribers
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr reference_servo_position_subscriber_;
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr reference_servo_velocity_subscriber_;
+
+  // callbacks
+  void referenceServoPositionCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
+  void referenceServoVelocityCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
+
+  // Handlers
+  dynamixel::PortHandler *portHandler;
+  dynamixel::PacketHandler *packetHandler;
+
+
+  // data
+  int present_position_;
+  int present_velocity_;
+  int control_mode_;
 };
 
 #endif  // DRIVER_FEETECH_SERVO_HPP_

@@ -49,6 +49,7 @@ class MissionDirector : public rclcpp::Node {
         rclcpp::Subscription<VehicleLocalPosition>::SharedPtr subscriber_vehicle_local_position_;
         rclcpp::Subscription<VehicleLandDetected>::SharedPtr subscriber_vehicle_land_detected_;
         rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr subscriber_tactile_sensor_pose_;
+        
         // publishers
         rclcpp::Publisher<TrajectorySetpoint>::SharedPtr publisher_trajectory_setpoint_;
         rclcpp::Publisher<VehicleCommand>::SharedPtr publisher_vehicle_command_;
@@ -60,6 +61,7 @@ class MissionDirector : public rclcpp::Node {
         void vehicleLocalPositionCallback(const VehicleLocalPosition::SharedPtr msg);
         void vehicleLandDetectedCallback(const VehicleLandDetected::SharedPtr msg);
         void tactileSensorPoseCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
+        
         // data
         TrajectorySetpoint trajectory_setpoint_;
 };

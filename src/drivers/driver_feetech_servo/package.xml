@@ -5,7 +5,9 @@
   <version>0.0.1</version>
   <description>Servo interface driver ROS2 package for Aerial Tactile Servoing project</description>
   <maintainer email="mbrummelhuis@gmail.com">Martijn Brummelhuis</maintainer>
-  <license>TODO: License declaration</license>
+  <license>GPL-3.0-only</license>
+
+  <depend>dynamixel_sdk</depend>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

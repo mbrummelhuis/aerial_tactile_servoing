@@ -19,6 +19,8 @@ class TactipDriver(Node):
 
         self.get_logger().info("Tactip driver initialized")
         self.get_logger().info(BASE_MODEL_PATH)
+
+        # publishers
         self.publisher_ = self.create_publisher(TwistStamped, '/sensors/tactip', 10)
 
         self.sensor = TacTip()
@@ -31,7 +33,6 @@ class TactipDriver(Node):
 
     def timer_callback(self):
         # read the data
-        start_time = time.time()
         processed_image = self.sensor.process()
         data = self.sensor.predict(processed_image)
 

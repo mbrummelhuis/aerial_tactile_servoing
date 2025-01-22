@@ -22,6 +22,11 @@ RUN apt-get update && apt-get install -y \
     python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
 
+# Install GPIO C library
+RUN git clone https://github.com/orangepi-xunlong/wiringOP.git
+WORKDIR /wiringOP
+RUN ./build clean && ./build
+
 # Configure user
 ARG USERNAME=ats-devcontainer
 ARG USER_UID=1000

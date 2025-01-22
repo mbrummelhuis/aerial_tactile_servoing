@@ -18,18 +18,25 @@ class ATSNavigation(Node):
         self.get_logger().info("Navigation node initialized")
 
         # Publishers
-        self.ee_linear_velocity_publisher_ = self.create_publisher(TwistStamped, '/references/ee_linear_velocity', 10)
-        self.ee_angular_velocity_publisher_ = self.create_publisher(TwistStamped, '/references/ee_ _velocity', 10)
-
-        # Subscribers
-        self.subscriber_
+        self.ee_velocity_publisher_ = self.create_publisher(TwistStamped, '/references/ee_pose', 10)
 
         self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().integer_value) # seconds
 
         self.timer = self.create_timer(self.period, self.timer_callback)
 
+    '''
+    Publish the reference end effector velocity
+    '''
     def timer_callback(self):
-        pass
+        msg = TwistStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.twist.linear.x = 0.0
+        msg.twist.linear.y = 0.0
+        msg.twist.linear.z = 0.0
+        msg.twist.angular.x = 0.0
+        msg.twist.angular.y = 0.0
+        msg.twist.angular.z = 0.0
+        self.ee_velocity_publisher_.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)

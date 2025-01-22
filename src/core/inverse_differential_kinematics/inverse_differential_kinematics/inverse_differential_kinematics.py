@@ -3,6 +3,7 @@ from rclpy.node import Node
 import numpy as np
 
 from geometry_msgs.msg import Vector3Stamped
+from geometry_msgs.msg import TwistStamped
 
 from jacobian import CentralisedJacobian
 
@@ -14,30 +15,22 @@ class InverseDifferentialKinematics(Node):
     def __init__(self):
         super().__init__('inverse_differential_kinematics')
         self.jacobian = CentralisedJacobian()
-        self.K = np.eye(6)
 
-        self.desired_ee_velocities = np.zeros(6)
+        # Parameters
+        self.declare_parameter('frequency', 10)
 
         # Data
-        self.state_position = np.array([0., 0., 0.])
-        self.state_orientation = np.array([0., 0., 0.])
-        self.state_joint_positions = np.array([0., 0., 0.])
-        self.state_linear_velocity = np.array([0., 0., 0.])
-        self.state_angular_velocity = np.array([0., 0., 0.])
-        self.state_joint_velocity = np.array([0., 0., 0.])
-        self.reference_ee_linear_velocity = np.array([0., 0., 0.])
-        self.reference_ee_angular_velocity = np.array([0., 0., 0.])
+        self.state_body_pose_ = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR
+        self.state_joint_positions_ = np.array([0., 0., 0.])
+        self.state_body_velocity_ = np.array([0., 0., 0., 0., 0., 0.])
+        self.state_joint_velocity_ = np.array([0., 0., 0.])
+        self.reference_ee_velocity_ = np.array([0., 0., 0., 0., 0., 0.])
 
         # Subscribers
         self.state_position_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/state/position',
-            self.state_position_callback,
-            10)
-        self.state_orientation_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/state/orientation',
-            self.state_orientation_callback,
+            TwistStamped,
+            '/state/body_pose',
+            self.state_body_pose_callback,
             10)
         self.state_joint_positions_subscription = self.create_subscription(
             Vector3Stamped,
@@ -45,50 +38,46 @@ class InverseDifferentialKinematics(Node):
             self.state_joint_position_callback,
             10)
         self.state_linear_velocity_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/state/linear_velocity',
-            self.state_linear_velocity_callback,
-            10)
-        self.state_angular_velocity_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/state/angular_velocity',
-            self.state_angular_velocity_callback,
+            TwistStamped,
+            '/state/body_velocity',
+            self.state_body_velocity_callback,
             10)
         self.state_joint_velocity_subscription = self.create_subscription(
             Vector3Stamped,
             '/state/joint_velocities',
             self.state_joint_velocity_callback,
             10)
-        self.reference_ee_linear_velocity_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/references/ee_linear_velocity',
-            self.reference_ee_linear_velocity_callback,
-            10)
-        self.reference_ee_angular_velocity_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/references/ee_angular_velocity',
-            self.reference_ee_angular_velocity_callback,
+        self.reference_ee_velocity_subscription = self.create_subscription(
+            TwistStamped,
+            '/references/ee_velocity',
+            self.reference_ee_velocity_callback,
             10)
 
         # Publishers
         self.reference_linear_velocity_publisher = self.create_publisher(
-            Vector3Stamped,
-            '/references/linear_velocity',
-            10)
-        self.reference_angular_velocity_publisher = self.create_publisher(
-            Vector3Stamped,
-            '/references/angular_velocity',
+            TwistStamped,
+            '/references/body_pose',
             10)
         self.reference_joint_velocity_publisher = self.create_publisher(
             Vector3Stamped,
             '/references/joint_velocities',
             10)
 
-        self.frequency = 40.0 # Hz
-        self.period = 1/self.frequency
+        self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().integer_value) # seconds
         self.timer = self.create_timer(self.period, self.timer_callback)
      
     def timer_callback(self):
+        # Set the state
+        self.state = {
+            'yaw': self.state_body_pose_[3],
+            'pitch': self.state_body_pose_[4],
+            'roll': self.state_body_pose_[5],
+            'q1': self.state_joint_positions_[0],
+            'q2': self.state_joint_positions_[1],
+            'q3': self.state_joint_positions_[2],
+        }
+        self.jacobian.set_state(self.state)
+
         # CLIK law
         J_con_pinv = self.jacobian.evaluate_pseudoinverse_controlled_jacobian()
         J_uncontrolled = self.jacobian.evaluate_uncontrolled_jacobian()
@@ -97,14 +86,10 @@ class InverseDifferentialKinematics(Node):
             J_con_pinv*J_uncontrolled*self.state_velocities[1:2]
         
         # Create messages
-        reference_linear_velocity = Vector3Stamped()
+        reference_linear_velocity = TwistStamped()
         reference_linear_velocity.vector.x = ref_state_velocities[0]
         reference_linear_velocity.vector.y = ref_state_velocities[1]
         reference_linear_velocity.vector.z = ref_state_velocities[2]
-        reference_angular_velocity = Vector3Stamped()
-        reference_angular_velocity.vector.x = ref_state_velocities[3]
-        reference_angular_velocity.vector.y = ref_state_velocities[4]
-        reference_angular_velocity.vector.z = ref_state_velocities[5]
         reference_joint_velocity = Vector3Stamped()
         reference_joint_velocity.vector.x = ref_state_velocities[6]
         reference_joint_velocity.vector.y = ref_state_velocities[7]
@@ -122,48 +107,40 @@ class InverseDifferentialKinematics(Node):
         self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
     
     # Subscriber callbacks
-    def state_position_callback(self, msg):
-        self.state_position[0] = msg.vector.x
-        self.state_position[1] = msg.vector.y
-        self.state_position[2] = msg.vector.z
-    
-    def state_orientation_callback(self, msg):
-        self.state_orientation[0] = msg.vector.x
-        self.state_orientation[1] = msg.vector.y
-        self.state_orientation[2] = msg.vector.z
+    def state_body_pose_callback(self, msg):
+        self.state_body_pose_[0] = msg.twist.linear.x # Body x
+        self.state_body_pose_[1] = msg.twist.linear.y # Body y
+        self.state_body_pose_[2] = msg.twist.linear.z # Body z
+        self.state_body_pose_[3] = msg.twist.angular.z # Yaw
+        self.state_body_pose_[4] = msg.twist.angular.y # Pitch
+        self.state_body_pose_[5] = msg.twist.angular.x # Roll
     
     def state_joint_position_callback(self, msg):
-        self.state_joint_positions[0] = msg.vector.x
-        self.state_joint_positions[1] = msg.vector.y
-        self.state_joint_positions[2] = msg.vector.z
+        self.state_joint_positions_[0] = msg.vector.x # q1
+        self.state_joint_positions_[1] = msg.vector.y # q2
+        self.state_joint_positions_[2] = msg.vector.z # q3
     
-    def state_linear_velocity_callback(self, msg):
-        self.state_linear_velocity[0] = msg.vector.x
-        self.state_linear_velocity[1] = msg.vector.y
-        self.state_linear_velocity[2] = msg.vector.z
-    
-    def state_angular_velocity_callback(self, msg):
-        self.state_angular_velocity[0] = msg.vector.x
-        self.state_angular_velocity[1] = msg.vector.y
-        self.state_angular_velocity[2] = msg.vector.z
+    def state_body_velocity_callback(self, msg):
+        self.state_body_velocity_[0] = msg.twist.linear.x # Body x
+        self.state_body_velocity_[1] = msg.twist.linear.y # Body y
+        self.state_body_velocity_[2] = msg.twist.linear.z # Body z
+        self.state_body_velocity_[3] = msg.twist.angular.z # Yaw
+        self.state_body_velocity_[4] = msg.twist.angular.y # Pitch
+        self.state_body_velocity_[5] = msg.twist.angular.x # Roll
 
     def state_joint_velocity_callback(self, msg):
-        self.state_joint_velocity[0] = msg.vector.x
-        self.state_joint_velocity[1] = msg.vector.y
-        self.state_joint_velocity[2] = msg.vector.z
+        self.state_joint_velocity_[0] = msg.vector.x # q1
+        self.state_joint_velocity_[1] = msg.vector.y # q2
+        self.state_joint_velocity_[2] = msg.vector.z # q3
     
-    def reference_ee_linear_velocity_callback(self, msg):
-        self.reference_ee_linear_velocity[0] = msg.vector.x
-        self.reference_ee_linear_velocity[1] = msg.vector.y
-        self.reference_ee_linear_velocity[2] = msg.vector.z
-
-    def reference_ee_angular_velocity_callback(self, msg):
-        self.reference_ee_angular_velocity[0] = msg.vector.x
-        self.reference_ee_angular_velocity[1] = msg.vector.y
-        self.reference_ee_angular_velocity[2] = msg.vector.z
+    def reference_ee_velocity_callback(self, msg):
+        self.reference_ee_velocity_[0] = msg.twist.linear.x # Body x
+        self.reference_ee_velocity_[1] = msg.twist.linear.y # Body y
+        self.reference_ee_velocity_[2] = msg.twist.linear.z # Body z
+        self.reference_ee_velocity_[3] = msg.twist.angular.z # Yaw
+        self.reference_ee_velocity_[4] = msg.twist.angular.y # Pitch
+        self.reference_ee_velocity_[5] = msg.twist.angular.x # Roll
     
-
-
 def main(args=None):
     rclpy.init(args=args)
     node = InverseDifferentialKinematics()
