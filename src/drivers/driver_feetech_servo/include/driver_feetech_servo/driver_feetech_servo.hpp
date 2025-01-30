@@ -39,8 +39,6 @@ private:
   // functions
   int InitializeServos();
   int Home();
-  int setMode(int servo_id, int mode);
-  int setReference(int servo_id, int reference);
 
   // services
   rclcpp::Subscription<SetPosition>::SharedPtr set_position_subscriber_;
@@ -62,11 +60,23 @@ private:
   dynamixel::PortHandler *portHandler;
   dynamixel::PacketHandler *packetHandler;
 
+  // servo data getters
+  void getPresentPosition(const int id, int &position);
+  void getPresentVelocity(const int id, int &velocity);
+  void getPresentCurrent(const int id, int &current);
+
+  // servo data setters
+  void setTorqueEnable(const int id, const int &enable);
+  int setMode(const int id, const int &mode);
+  int setReference(const int id, const int &reference);
 
   // data
   int present_position_;
   int present_velocity_;
   int control_mode_;
+
+  // ??
+  int dxl_error = 0;
 };
 
 #endif  // DRIVER_FEETECH_SERVO_HPP_
