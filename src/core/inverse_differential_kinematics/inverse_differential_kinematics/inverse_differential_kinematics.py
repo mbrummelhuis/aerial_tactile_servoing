@@ -11,6 +11,7 @@ class InverseDifferentialKinematics(Node):
     """
     This class implements the velocity controller for the aerial tactile servoing experiment.
     The controller is based on Closed-Loop Inverse Kinematics to go from a commanded end-effector pose to state velocity references.
+    In short, this is the jacobian node.
     """
     def __init__(self):
         super().__init__('inverse_differential_kinematics')
@@ -24,7 +25,7 @@ class InverseDifferentialKinematics(Node):
         self.state_joint_positions_ = np.array([0., 0., 0.])
         self.state_body_velocity_ = np.array([0., 0., 0., 0., 0., 0.])
         self.state_joint_velocity_ = np.array([0., 0., 0.])
-        self.reference_ee_velocity_ = np.array([0., 0., 0., 0., 0., 0.])
+        self.virtual_end_effector_velocity_ = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, virtual velocity driving end-effector to reference pose
 
         # Subscribers
         self.state_position_subscription = self.create_subscription(
@@ -56,7 +57,7 @@ class InverseDifferentialKinematics(Node):
         # Publishers
         self.reference_linear_velocity_publisher = self.create_publisher(
             TwistStamped,
-            '/references/body_pose',
+            '/references/body_velocities',
             10)
         self.reference_joint_velocity_publisher = self.create_publisher(
             Vector3Stamped,
@@ -81,15 +82,17 @@ class InverseDifferentialKinematics(Node):
         # CLIK law
         J_con_pinv = self.jacobian.evaluate_pseudoinverse_controlled_jacobian()
         J_uncontrolled = self.jacobian.evaluate_uncontrolled_jacobian()
-        kinematic_error = self.ee_pose_reference - self.ee_pose_actual
-        ref_state_velocities = J_con_pinv*(self.desired_ee_velocities + self.K*kinematic_error) - \
-            J_con_pinv*J_uncontrolled*self.state_velocities[1:2]
+        ref_state_velocities = J_con_pinv * self.virtual_end_effector_velocity_ - \
+            J_con_pinv*J_uncontrolled*self.state_body_velocity_[0:2] # XY velocities are uncontrolled
         
         # Create messages
-        reference_linear_velocity = TwistStamped()
-        reference_linear_velocity.vector.x = ref_state_velocities[0]
-        reference_linear_velocity.vector.y = ref_state_velocities[1]
-        reference_linear_velocity.vector.z = ref_state_velocities[2]
+        reference_body_rates = TwistStamped()
+        reference_body_rates.twist.linear.x = 0.0 # The x velocity is uncontrolled
+        reference_body_rates.twist.linear.y = 0.0 # The y velocity is uncontrolled
+        reference_body_rates.twist.linear.z = ref_state_velocities[0]  # Z velocity
+        reference_body_rates.twist.angular.z = ref_state_velocities[1] # Yaw rate
+        reference_body_rates.twist.angular.y = ref_state_velocities[2] # Pitch rate
+        reference_body_rates.twist.angular.x = ref_state_velocities[3] # Roll rate
         reference_joint_velocity = Vector3Stamped()
         reference_joint_velocity.vector.x = ref_state_velocities[6]
         reference_joint_velocity.vector.y = ref_state_velocities[7]
@@ -97,13 +100,11 @@ class InverseDifferentialKinematics(Node):
 
         # Get timestamp
         timestamp = self.get_clock().now().to_msg()
-        reference_linear_velocity.header.stamp = timestamp
-        reference_angular_velocity.header.stamp = timestamp
+        reference_body_rates.header.stamp = timestamp
         reference_joint_velocity.header.stamp = timestamp
 
         # Publish the references
-        self.reference_linear_velocity_publisher.publish(reference_linear_velocity)
-        self.reference_angular_velocity_publisher.publish(reference_angular_velocity)
+        self.reference_linear_velocity_publisher.publish(reference_body_rates)
         self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
     
     # Subscriber callbacks
@@ -134,12 +135,12 @@ class InverseDifferentialKinematics(Node):
         self.state_joint_velocity_[2] = msg.vector.z # q3
     
     def reference_ee_velocity_callback(self, msg):
-        self.reference_ee_velocity_[0] = msg.twist.linear.x # Body x
-        self.reference_ee_velocity_[1] = msg.twist.linear.y # Body y
-        self.reference_ee_velocity_[2] = msg.twist.linear.z # Body z
-        self.reference_ee_velocity_[3] = msg.twist.angular.z # Yaw
-        self.reference_ee_velocity_[4] = msg.twist.angular.y # Pitch
-        self.reference_ee_velocity_[5] = msg.twist.angular.x # Roll
+        self.virtual_end_effector_velocity_[0] = msg.twist.linear.x # Body x
+        self.virtual_end_effector_velocity_[1] = msg.twist.linear.y # Body y
+        self.virtual_end_effector_velocity_[2] = msg.twist.linear.z # Body z
+        self.virtual_end_effector_velocity_[3] = msg.twist.angular.z # Yaw
+        self.virtual_end_effector_velocity_[4] = msg.twist.angular.y # Pitch
+        self.virtual_end_effector_velocity_[5] = msg.twist.angular.x # Roll
     
 def main(args=None):
     rclpy.init(args=args)

@@ -7,7 +7,8 @@ from geometry_msgs.msg import TwistStamped
 class ATSVelocityController(Node):
     '''
     Aerial Tactile Servoing end-effector velocity controller node. This node takes in the estimated sensor pose from the TacTip
-    and the reference pose from the planner and computes end-effector velocity commands to be sent to the IK node.
+    and the reference pose from the planner and computes virtual end-effector velocity commands to be sent to the IK node.
+    In short, this is the PID node.
     '''
     def __init__(self):
         super().__init__('ats_velocity_controller')
