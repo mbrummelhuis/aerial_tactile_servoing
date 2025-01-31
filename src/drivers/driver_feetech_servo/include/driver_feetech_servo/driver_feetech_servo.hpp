@@ -44,6 +44,8 @@
 #define ADDR_POSITION_P 21
 #define ADDR_POSITION_D 22
 #define ADDR_POSITION_I 23
+#define ADDR_VELOCITY_P 37
+#define ADDR_VELOCITY_I 39
 
 // Protocol version
 #define PROTOCOL_VERSION 1.0  // Feetech uses Dynamixel protocol v1.0
@@ -53,8 +55,6 @@
 #define DEVICE_NAME "/dev/ttyUSB1"  // [Linux]: "/dev/ttyUSB*"
 
 // Modes
-#define POSITION_MODE 0
-#define VELOCITY_MODE 1
 #define TORQUE_ENABLE 1
 #define TORQUE_DISABLE 0
 
@@ -66,39 +66,68 @@
 #define ELBOW_1_ID 3
 #define ELBOW_2_ID 13
 
+enum ControlMode {
+  POSITION_MODE = 0,
+  VELOCITY_MODE = 1
+};
+
+enum HomingMode {
+  LOAD_BASED = 0,   // Home based on load increase
+  SWITCH_BASED = 1  // Home based on limit switch
+};
+
+enum TorqueEnable {
+  ENABLED = 1,
+  DISABLED = 0
+};
+
 class DriverFeetechServo : public rclcpp::Node
 {
 public:
   DriverFeetechServo();
   ~DriverFeetechServo();
 
+  // Define struct for saving state of single servo
   struct ServoState {
     int id;
     int position;
     int velocity;
     int current;
+    HomingMode homing_mode;
+    ControlMode control_mode;
 
-    ServoState(int id = 0, float position = 0.0f, float velocity = 0.0f, float current = 0.0f)
-        : id(id), position(position), velocity(velocity), current(current) {}
+    ServoState(
+      int id = 0, 
+      float position = 0.0f, 
+      float velocity = 0.0f, 
+      float current = 0.0f, 
+      HomingMode homing_mode = LOAD_BASED, 
+      ControlMode control_mode = POSITION_MODE)
+        : id(id), 
+        position(position), 
+        velocity(velocity), 
+        current(current),
+        homing_mode(LOAD_BASED),
+        control_mode(POSITION_MODE) {}
   };
 
+  // Define struct for saving state of all servos
   struct ServoData {
     // unordered map allows accessing servos by ID: servo_data.servos[PIVOT_1_ID]
-    std::unordered_map<int, ServoState> servos;
-    ServoData() { // Set servos on servodata
-      servos[PIVOT_1_ID] = ServoState(PIVOT_1_ID);
-      servos[PIVOT_2_ID] = ServoState(PIVOT_2_ID);
-      servos[SHOULDER_1_ID] = ServoState(SHOULDER_1_ID);
-      servos[SHOULDER_2_ID] = ServoState(SHOULDER_2_ID);
-      servos[ELBOW_1_ID] = ServoState(ELBOW_1_ID);
-      servos[ELBOW_2_ID] = ServoState(ELBOW_2_ID);
+    std::unordered_map<int, ServoState> servo_map;
+
+    ServoData() {}
+    void AddServo(ServoState servo) {
+      servo_map[servo.id] = servo;
     }
-  } servo_data;
+    
+  } mServoData;
 
 private:
   // functions
   int InitializeServos();
-  int Home();
+  void HomeSingleServo(const int id);
+  void HomeAll();
 
   // publishers
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr current_servo_position_publisher_;
@@ -117,24 +146,26 @@ private:
   dynamixel::PacketHandler *packetHandler;
 
   // servo data getters
-  void getPresentPositions();
-  void getPresentVelocities();
-  void getPresentCurrents();
+  int getSinglePresentPosition(const int id);
+  int getSinglePresentVelocity(const int id);
+  int getSinglePresentCurrent(const int id);
+  void getAllPresentPositions();
+  void getAllPresentVelocities();
+  void getAllPresentCurrents();
 
   // general servo data setters
-  int setMode(const int &mode);
+  void setSingleMode(const int id, const ControlMode &mode);
+  void setAllMode(const ControlMode &mode);
 
   // individual servo data setters
-  void setTorqueEnable(const int id, const int &enable);
-  int setReference(const int id, const int &reference);
-
-  // data
-  int present_position_;
-  int present_velocity_;
-  int control_mode_;
+  void setSingleEnable(const int id, const TorqueEnable &enable);
+  void setAllEnable(const TorqueEnable &enable);
+  void setPositionReference(const int id, const int &reference);
+  void setVelocityReference(const int id, const int &reference);
 
   // ??
-  int dxl_error = 0;
+  uint8_t mErrorCode;
+  int mCommResult;
 };
 
 #endif  // DRIVER_FEETECH_SERVO_HPP_
