@@ -53,6 +53,7 @@
 #define ADDR_PRESENT_POSITION 56
 #define ADDR_GOAL_SPEED 46
 #define ADDR_PRESENT_SPEED 58
+#define ADDR_PRESENT_CURRENT 69
 
 // Controller gains
 #define ADDR_POSITION_P 21
@@ -63,7 +64,7 @@
 #define PROTOCOL_VERSION 1.0  // Feetech uses Dynamixel protocol v1.0
 
 // Default setting
-#define BAUDRATE 1000000  // Default Baudrate of DYNAMIXEL X series
+#define BAUDRATE 1000000  // Servo Baudrate
 #define DEVICE_NAME "/dev/ttyUSB1"  // [Linux]: "/dev/ttyUSB*"
 
 // Modes
@@ -73,12 +74,12 @@
 #define TORQUE_DISABLE 0
 
 // Servo IDs
-#define PIVOT_1 1
-#define PIVOT_2 11
-#define SHOULDER_1 2
-#define SHOULDER_2 12
-#define ELBOW_1 3
-#define ELBOW_2 13
+#define PIVOT_1_ID 1
+#define PIVOT_2_ID 11
+#define SHOULDER_1_ID 2
+#define SHOULDER_2_ID 12
+#define ELBOW_1_ID 3
+#define ELBOW_2_ID 13
 
 uint8_t error_code = 0;
 int comm_result = COMM_TX_FAIL;
@@ -143,104 +144,136 @@ int DriverFeetechServo::InitializeServos()
     RCLCPP_INFO(rclcpp::get_logger("driver_feetech_servo"), "Succeeded to set the baudrate.");
   }
 
-  // homing
+  // homing procedure
 
   // Set all servos to position mode
-  setMode(PIVOT_1, POSITION_MODE);
-  setMode(PIVOT_2, POSITION_MODE);
-  setMode(SHOULDER_1, POSITION_MODE);
-  setMode(SHOULDER_2, POSITION_MODE);
+  setMode(POSITION_MODE);
 
   // Set all servos to torque enable
-  setTorqueEnable(PIVOT_1, TORQUE_ENABLE);
-  setTorqueEnable(PIVOT_2, TORQUE_ENABLE);
-  setTorqueEnable(SHOULDER_1, TORQUE_ENABLE);
-  setTorqueEnable(SHOULDER_2, TORQUE_ENABLE);
+  setTorqueEnable(PIVOT_1_ID, TORQUE_ENABLE);
+  setTorqueEnable(PIVOT_2_ID, TORQUE_ENABLE);
+  setTorqueEnable(SHOULDER_1_ID, TORQUE_ENABLE);
+  setTorqueEnable(SHOULDER_2_ID, TORQUE_ENABLE);
 
+  // Check all the limit switches
+  int limit_pivot_1 = digitalRead(LIMIT_PIVOT_1);
+  int limit_pivot_2 = digitalRead(LIMIT_PIVOT_2);
+  int limit_shoulder_1 = digitalRead(LIMIT_SHOULDER_1);
+  int limit_shoulder_2 = digitalRead(LIMIT_SHOULDER_2);
 
+  bool homed = false;
+  while (homed==false)
+  {
+    // For the pivot and shoulder, servos are mounted mirrored
+    if (limit_pivot_1==LOW) // Pivot 1 is above the limit switch
+    {
+      getPresentPositions();
+      setReference(PIVOT_1_ID, servo_data.servos[0].position);
+    }
+    else
+    {
+      setReference(PIVOT_1_ID, 0);
+      homed = true;
+    }
+
+  }
 
 
 };
 
-void DriverFeetechServo::getPresentPosition(const int id, int &position)
+void DriverFeetechServo::getPresentPositions()
 {
-  // Read Present Position (length : 4 bytes) and Convert uint32 -> int32
-  comm_result = packetHandler->read2ByteTxRx(
-    portHandler,
-    (uint8_t) id,
-    ADDR_PRESENT_POSITION,
-    reinterpret_cast<uint16_t *>(&position),
-    &error_code
-  );
+  for (int i = 0; i < servo_data.servos.size(); i++)
+  {
+    // Read Present Position (length : 4 bytes) and Convert uint32 -> int32
+    comm_result = packetHandler->read2ByteTxRx(
+      portHandler,
+      (uint8_t) servo_data.servos[i].id,
+      ADDR_PRESENT_POSITION,
+      reinterpret_cast<uint16_t *>(&servo_data.servos[i].position),
+      &error_code
+    );
 
-  RCLCPP_INFO(
-    this->get_logger(),
-    "Get [ID: %d] [Present Position: %d ticks]",
-    id,
-    position
-  );
+    if (comm_result != COMM_SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(), "Failed to get present position. Error code %c", error_code);
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Get [ID: %d] [Present position: %d ticks]",
+      servo_data.servos[i].id,
+      servo_data.servos[i].position);
+    }
+  }
 };
 
-void DriverFeetechServo::getPresentVelocity(const int id, int &velocity)
+void DriverFeetechServo::getPresentVelocities()
 {
-  // Read Present Position (length : 4 bytes) and Convert uint32 -> int32
-  comm_result = packetHandler->read2ByteTxRx(
-    portHandler,
-    (uint8_t) id,
-    ADDR_PRESENT_SPEED,
-    reinterpret_cast<uint16_t *>(&velocity),
-    &error_code
-  );
+  for (int i = 0; i < servo_data.servos.size(); i++)
+  {
+    // Read Present Position (length : 4 bytes) and Convert uint32 -> int32
+    comm_result = packetHandler->read2ByteTxRx(
+      portHandler,
+      (uint8_t) servo_data.servos[i].id,
+      ADDR_PRESENT_SPEED,
+      reinterpret_cast<uint16_t *>(&servo_data.servos[i].velocity),
+      &error_code
+    );
 
-  RCLCPP_INFO(
-    this->get_logger(),
-    "Get [ID: %d] [Present velocity: %d ticks/s]",
-    id,
-    velocity
-  );
+    if (comm_result != COMM_SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(), "Failed to get present velocity. Error code %c", error_code);
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Get [ID: %d] [Present velocity: %d ticks/s]",
+      servo_data.servos[i].id,
+      servo_data.servos[i].velocity);
+    }
+  }
 };
 
-void DriverFeetechServo::getPresentCurrent(const int id, int &current)
+void DriverFeetechServo::getPresentCurrents()
 {
-  // Read Present Position (length : 4 bytes) and Convert uint32 -> int32
-  comm_result = packetHandler->read2ByteTxRx(
-    portHandler,
-    (uint8_t) id,
-    ADDR_PRESENT_SPEED,
-    reinterpret_cast<uint16_t *>(&current),
-    &error_code
-  );
+  for (int i = 0; i < servo_data.servos.size(); i++)
+  {
+    // Read Present Position (length : 4 bytes) and Convert uint32 -> int32
+    comm_result = packetHandler->read2ByteTxRx(
+      portHandler,
+      (uint8_t) servo_data.servos[i].id,
+      ADDR_PRESENT_CURRENT,
+      reinterpret_cast<uint16_t *>(&servo_data.servos[i].current),
+      &error_code
+    );
 
-  RCLCPP_INFO(
-    this->get_logger(),
-    "Get [ID: %d] [Present current: %d mA]",
-    id,
-    current*6.5
-  );
+    if (comm_result != COMM_SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(), "Failed to get present current. Error code %c", error_code);
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Get [ID: %d] [Present current: %d mA]",
+      servo_data.servos[i].id,
+      servo_data.servos[i].current);
+    }
+  }
 };
 
 /* Set servo control mode
  * @param servo_id: ID of the servo
  * @param mode: 0 for position mode, 1 for velocity mode
  */
-int DriverFeetechServo::setMode(const int id, const int &mode)
+int DriverFeetechServo::setMode(const int &mode)
 {
-  // Set all servos to position mode
-  comm_result = packetHandler->write1ByteTxRx(
-    portHandler,
-    id,
-    ADDR_OPERATING_MODE,
-    mode,
-    &error_code
-  );
+  for (int i = 0; i < servo_data.servos.size(); i++)
+  {
+    // Set all servos to position mode
+    comm_result = packetHandler->write1ByteTxRx(
+      portHandler,
+      (uint8_t) servo_data.servos[i].id,
+      ADDR_OPERATING_MODE,
+      mode,
+      &error_code
+    );
 
-  if (comm_result != COMM_SUCCESS) {
-    RCLCPP_ERROR(this->get_logger(), "Failed to set Position Control Mode.Error code {error_code}");
-    return -1;
-  } else {
-    RCLCPP_INFO(this->get_logger(), "Succeeded to set control mode to {mode}.");
-    control_mode_ = mode;
-    return 0;
+    if (comm_result != COMM_SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(), "Failed to set Position Control Mode.Error code %c", error_code);
+      return -1;
+    } else {
+      RCLCPP_INFO(this->get_logger(), "Succeeded to set control mode to %d.", mode);
+      control_mode_ = mode;
+    }
   }
 };
 
