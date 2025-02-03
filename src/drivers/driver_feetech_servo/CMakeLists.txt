@@ -11,13 +11,11 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 #find_package(wiringPi REQUIRED)
 find_package(dynamixel_sdk REQUIRED)
-find_package(dynamixel_sdk_custom_interfaces REQUIRED)
 
 add_executable(driver_feetech_servo src/driver_feetech_servo.cpp)
 ament_target_dependencies(driver_feetech_servo 
   rclcpp 
   geometry_msgs
-  dynamixel_sdk_custom_interfaces
   dynamixel_sdk
   )
 

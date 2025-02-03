@@ -47,15 +47,15 @@
 using std::placeholders::_1;
 
 DriverFeetechServo::DriverFeetechServo()
-: Node("driver_feetech_servo"), 
-  mHomePositionIncrement(10),
-  mNodeFrequency(0),
-  mCommResult(0),
-  mErrorCode(0),
+: Node("driver_feetech_servo"),
+  mServoData(),
   portHandler(nullptr),
   packetHandler(nullptr),
-  mServoData(),
-  mCurrentThreshold(100)
+  mErrorCode(0),
+  mCommResult(0),
+  mHomePositionIncrement(10),
+  mCurrentThreshold(100),
+  mNodeFrequency(0)
 {
   RCLCPP_INFO(this->get_logger(), "Started Feetech servo driver node");
 
@@ -70,10 +70,10 @@ DriverFeetechServo::DriverFeetechServo()
 
   // QoS settings
   this->declare_parameter("qos_depth", 10);
-  int8_t qos_depth = 0;
-  this->get_parameter("qos_depth", qos_depth);
-  const auto QOS_RKL10V =
-    rclcpp::QoS(rclcpp::KeepLast(qos_depth)).reliable().durability_volatile();
+  // int8_t qos_depth = 0;
+  // this->get_parameter("qos_depth", qos_depth);
+  // const auto QOS_RKL10V =
+  //   rclcpp::QoS(rclcpp::KeepLast(qos_depth)).reliable().durability_volatile();
 
   // Subscriptions
   // Subscribe to topic to set mode and to topic to set reference (i.e. reference--> one messag for all servos)

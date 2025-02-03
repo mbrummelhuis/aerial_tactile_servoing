@@ -100,8 +100,8 @@ public:
         limit_switch_pin(limit_switch_pin),
         continuous_position(continuous_position),
         home_position(home_position),
-        homing_mode(LOAD_BASED),
-        control_mode(POSITION_MODE) {}
+        homing_mode(homing_mode),
+        control_mode(control_mode) {}
   };
 
   // Define struct for saving state of all servos
@@ -135,10 +135,6 @@ private:
   void referenceServoPositionCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
   void referenceServoVelocityCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
 
-  // Handlers
-  dynamixel::PortHandler *portHandler;
-  dynamixel::PacketHandler *packetHandler;
-
   // servo data getters
   void getSinglePresentPosition(const int id);
   void getSinglePresentVelocity(const int id);
@@ -159,6 +155,10 @@ private:
 
   // publish and subscribe functions
   void PublishServoData();
+  
+  // Handlers
+  dynamixel::PortHandler *portHandler;
+  dynamixel::PacketHandler *packetHandler;
 
   // ??
   uint8_t mErrorCode;
