@@ -22,14 +22,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rcutils/cmdline_parser.h"
 #include "dynamixel_sdk/dynamixel_sdk.h"
-#include "dynamixel_sdk_custom_interfaces/msg/set_position.hpp"
-#include "dynamixel_sdk_custom_interfaces/srv/get_position.hpp"
-
-// Limit switch input pins -- Check gpio readall
-#define LIMIT_PIVOT_1 10
-#define LIMIT_PIVOT_2 9
-#define LIMIT_SHOULDER_1 6
-#define LIMIT_SHOULDER_2 13
 
 // Control table addresses for Feetech STS
 #define ADDR_OPERATING_MODE 33 // 0: position, 1: velocity
@@ -58,14 +50,6 @@
 #define TORQUE_ENABLE 1
 #define TORQUE_DISABLE 0
 
-// Servo IDs
-#define PIVOT_1_ID 1
-#define PIVOT_2_ID 11
-#define SHOULDER_1_ID 2
-#define SHOULDER_2_ID 12
-#define ELBOW_1_ID 3
-#define ELBOW_2_ID 13
-
 enum ControlMode {
   POSITION_MODE = 0,
   VELOCITY_MODE = 1
@@ -93,20 +77,29 @@ public:
     int position;
     int velocity;
     int current;
+    int limit_switch_pin;
+    int continuous_position;
+    int home_position;
     HomingMode homing_mode;
     ControlMode control_mode;
 
     ServoState(
       int id = 0, 
-      float position = 0.0f, 
-      float velocity = 0.0f, 
-      float current = 0.0f, 
+      int position = 0, 
+      int velocity = 0, 
+      int current = 0, 
+      int limit_switch_pin = 0,
+      int continuous_position = 0,
+      int home_position = 0,
       HomingMode homing_mode = LOAD_BASED, 
       ControlMode control_mode = POSITION_MODE)
         : id(id), 
         position(position), 
         velocity(velocity), 
         current(current),
+        limit_switch_pin(limit_switch_pin),
+        continuous_position(continuous_position),
+        home_position(home_position),
         homing_mode(LOAD_BASED),
         control_mode(POSITION_MODE) {}
   };
@@ -125,9 +118,10 @@ public:
 
 private:
   // functions
-  int InitializeServos();
+  void InitializeServos();
   void HomeSingleServo(const int id);
   void HomeAll();
+  void timerCallback();
 
   // publishers
   rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr current_servo_position_publisher_;
@@ -146,9 +140,9 @@ private:
   dynamixel::PacketHandler *packetHandler;
 
   // servo data getters
-  int getSinglePresentPosition(const int id);
-  int getSinglePresentVelocity(const int id);
-  int getSinglePresentCurrent(const int id);
+  void getSinglePresentPosition(const int id);
+  void getSinglePresentVelocity(const int id);
+  void getSinglePresentCurrent(const int id);
   void getAllPresentPositions();
   void getAllPresentVelocities();
   void getAllPresentCurrents();
@@ -163,9 +157,16 @@ private:
   void setPositionReference(const int id, const int &reference);
   void setVelocityReference(const int id, const int &reference);
 
+  // publish and subscribe functions
+  void PublishServoData();
+
   // ??
   uint8_t mErrorCode;
   int mCommResult;
+  const int mHomePositionIncrement;
+  const int mCurrentThreshold;
+  int mNodeFrequency;
+  rclcpp::TimerBase::SharedPtr mTimer;
 };
 
 #endif  // DRIVER_FEETECH_SERVO_HPP_
