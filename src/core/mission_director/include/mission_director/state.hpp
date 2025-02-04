@@ -24,6 +24,11 @@ public:
     void setVehicleLocalPosition(const VehicleLocalPosition::SharedPtr msg);
     void setVehicleLandDetected(const VehicleLandDetected::SharedPtr msg);
     void setTactileSensorPose(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
+    void setVehicleAngularVelocity(const VehicleAngularVelocity::SharedPtr msg);
+    void setVehicleAttitude(const VehicleAttitude::SharedPtr msg);
+
+    // publisher
+    void publishVehicleState();
 
     std::string getStateName() const {
         return state_name_;
@@ -40,6 +45,10 @@ protected:
     VehicleLocalPosition vehicle_local_position_;
     VehicleLandDetected vehicle_land_detected_;
     geometry_msgs::msg::TwistStamped tactile_sensor_pose_;
+    VehicleAngularVelocity vehicle_angular_velocity_;
+    VehicleAttitude vehicle_attitude_;
+
+    std::vector<double> QuatToEuler(std::vector<double> q);
 };
 
 

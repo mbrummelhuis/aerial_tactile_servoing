@@ -11,8 +11,11 @@
 #include <px4_msgs/msg/distance_sensor.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <px4_msgs/msg/vehicle_land_detected.hpp>
+#include <px4_msgs/msg/vehicle_angular_velocity.hpp>
+#include <px4_msgs/msg/vehicle_attitude.hpp>
 
 #include <geometry_msgs/msg/twist_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 
 #include "mission_director/state.hpp"
 
@@ -37,6 +40,9 @@ class MissionDirector : public rclcpp::Node {
         void publishTrajectorySetpoint(TrajectorySetpoint::SharedPtr msg);
         void publishVehicleCommand(VehicleCommand::SharedPtr msg);
         void publishOffboardControlmode(OffboardControlMode::SharedPtr msg);
+        void publishBodyAngles(geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
+        void publishBodyAngularVelocity(geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
+        void publishVehicleState();
     
     private:
         int frequency_ = 100; // Hz
@@ -49,11 +55,16 @@ class MissionDirector : public rclcpp::Node {
         rclcpp::Subscription<VehicleLocalPosition>::SharedPtr subscriber_vehicle_local_position_;
         rclcpp::Subscription<VehicleLandDetected>::SharedPtr subscriber_vehicle_land_detected_;
         rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr subscriber_tactile_sensor_pose_;
+        rclcpp::Subscription<VehicleAngularVelocity>::SharedPtr subscriber_vehicle_angular_velocity_;
+        rclcpp::Subscription<VehicleAttitude>::SharedPtr subscriber_vehicle_attitude_;
         
         // publishers
         rclcpp::Publisher<TrajectorySetpoint>::SharedPtr publisher_trajectory_setpoint_;
         rclcpp::Publisher<VehicleCommand>::SharedPtr publisher_vehicle_command_;
         rclcpp::Publisher<OffboardControlMode>::SharedPtr publisher_offboard_control_mode_;
+
+        rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr publisher_body_angles_;
+        rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr publisher_body_angular_velocity_;
 
         // callbacks
         void vehicleStatusCallback(const VehicleStatus::SharedPtr msg);
@@ -61,6 +72,8 @@ class MissionDirector : public rclcpp::Node {
         void vehicleLocalPositionCallback(const VehicleLocalPosition::SharedPtr msg);
         void vehicleLandDetectedCallback(const VehicleLandDetected::SharedPtr msg);
         void tactileSensorPoseCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
+        void vehicleAngularVelocityCallback(const VehicleAngularVelocity::SharedPtr msg);
+        void vehicleAttitudeCallback(const VehicleAttitude::SharedPtr msg);
         
         // data
         TrajectorySetpoint trajectory_setpoint_;

@@ -22,11 +22,17 @@ MissionDirector::MissionDirector() : Node("mission_director") {
     subscriber_vehicle_status_ = this->create_subscription<VehicleStatus>("/fmu/out/vehicle_status", 10, std::bind(&MissionDirector::vehicleStatusCallback, this, std::placeholders::_1));
     subscriber_distance_sensor_ = this->create_subscription<DistanceSensor>("/fmu/out/distance_sensor", 10, std::bind(&MissionDirector::vehicleDistanceSensorCallback, this, std::placeholders::_1));
     subscriber_vehicle_local_position_ = this->create_subscription<VehicleLocalPosition>("/fmu/out/vehicle_local_position", 10, std::bind(&MissionDirector::vehicleLocalPositionCallback, this, std::placeholders::_1));
+    subscriber_vehicle_angular_velocity_ = this->create_subscription<VehicleAngularVelocity>("/fmu/out/vehicle_angular_velocity", 10, std::bind(&MissionDirector::vehicleAngularVelocityCallback, this, std::placeholders::_1));
+    subscriber_vehicle_attitude_ = this->create_subscription<VehicleAttitude>("/fmu/out/vehicle_attitude", 10, std::bind(&MissionDirector::vehicleAttitudeCallback, this, std::placeholders::_1));
     
     // publishers
     publisher_trajectory_setpoint_ = this->create_publisher<TrajectorySetpoint>("/fmu/in/trajectory_setpoint", 10);
     publisher_vehicle_command_ = this->create_publisher<VehicleCommand>("/fmu/in/vehicle_command", 10);
     publisher_offboard_control_mode_ = this->create_publisher<OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
+
+    publisher_body_angles_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("/state/body_angles", 10);
+    publisher_body_angular_velocity_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("/state/body_angular_velocity", 10);
+
 
     // make timer
     timer_ = this->create_wall_timer(
@@ -43,6 +49,7 @@ void MissionDirector::setState(std::shared_ptr<State> new_state) {
 }
 
 void MissionDirector::execute() {
+    publishVehicleState();
     current_state_->execute();
 }
 
@@ -71,6 +78,16 @@ void MissionDirector::tactileSensorPoseCallback(const geometry_msgs::msg::TwistS
     current_state_->setTactileSensorPose(msg);
 }
 
+void MissionDirector::vehicleAngularVelocityCallback(const VehicleAngularVelocity::SharedPtr msg) {
+    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->xyz[0]);
+    current_state_->setVehicleAngularVelocity(msg);
+}
+
+void MissionDirector::vehicleAttitudeCallback(const VehicleAttitude::SharedPtr msg) {
+    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->q[0]);
+    current_state_->setVehicleAttitude(msg);
+}
+
 void MissionDirector::publishTrajectorySetpoint(TrajectorySetpoint::SharedPtr msg) {
 	msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
     publisher_trajectory_setpoint_->publish(*msg); // publish the message
@@ -84,6 +101,20 @@ void MissionDirector::publishVehicleCommand(VehicleCommand::SharedPtr msg) {
 void MissionDirector::publishOffboardControlmode(OffboardControlMode::SharedPtr msg) {
     msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
     publisher_offboard_control_mode_->publish(*msg); // publish the message
+}
+
+void MissionDirector::publishVehicleState() {
+    current_state_->publishVehicleState();
+}
+
+void MissionDirector::publishBodyAngles(geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
+    msg->header.stamp = this->get_clock()->now(); // add the timestamp
+    publisher_body_angles_->publish(*msg); // publish the message
+}
+
+void MissionDirector::publishBodyAngularVelocity(geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
+    msg->header.stamp = this->get_clock()->now(); // add the timestamp
+    publisher_body_angular_velocity_->publish(*msg); // publish the message
 }
 
 int MissionDirector::getFrequency() const {
