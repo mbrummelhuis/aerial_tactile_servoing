@@ -13,6 +13,7 @@
 #include <px4_msgs/msg/vehicle_land_detected.hpp>
 #include <px4_msgs/msg/vehicle_angular_velocity.hpp>
 #include <px4_msgs/msg/vehicle_attitude.hpp>
+#include <px4_msgs/msg/vehicle_rates_setpoint.hpp>
 
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
@@ -42,6 +43,7 @@ class MissionDirector : public rclcpp::Node {
         void publishOffboardControlmode(OffboardControlMode::SharedPtr msg);
         void publishBodyAngles(geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
         void publishBodyAngularVelocity(geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
+        void publishVehicleRatesSetpoint(VehicleRatesSetpoint::SharedPtr msg);
         void publishVehicleState();
     
     private:
@@ -57,11 +59,13 @@ class MissionDirector : public rclcpp::Node {
         rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr subscriber_tactile_sensor_pose_;
         rclcpp::Subscription<VehicleAngularVelocity>::SharedPtr subscriber_vehicle_angular_velocity_;
         rclcpp::Subscription<VehicleAttitude>::SharedPtr subscriber_vehicle_attitude_;
+        rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr subscriber_reference_body_velocity_;
         
         // publishers
         rclcpp::Publisher<TrajectorySetpoint>::SharedPtr publisher_trajectory_setpoint_;
         rclcpp::Publisher<VehicleCommand>::SharedPtr publisher_vehicle_command_;
         rclcpp::Publisher<OffboardControlMode>::SharedPtr publisher_offboard_control_mode_;
+        rclcpp::Publisher<VehicleRatesSetpoint>::SharedPtr publisher_vehicle_rates_setpoint_;
 
         rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr publisher_body_angles_;
         rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr publisher_body_angular_velocity_;
@@ -74,6 +78,7 @@ class MissionDirector : public rclcpp::Node {
         void tactileSensorPoseCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
         void vehicleAngularVelocityCallback(const VehicleAngularVelocity::SharedPtr msg);
         void vehicleAttitudeCallback(const VehicleAttitude::SharedPtr msg);
+        void referenceBodyVelocityCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
         
         // data
         TrajectorySetpoint trajectory_setpoint_;

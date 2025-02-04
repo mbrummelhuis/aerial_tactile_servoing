@@ -23,6 +23,10 @@ private:
     std::chrono::time_point<std::chrono::steady_clock> start_time_;
 
     const int wait_time_ = 60; // seconds
+
+    // functions
+    void publishBodyRateMode();
+    void publishVehicleRatesSetpoint();
 };
 
 #endif // STATE_ATS_HPP

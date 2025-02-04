@@ -27,6 +27,8 @@ public:
     void setVehicleAngularVelocity(const VehicleAngularVelocity::SharedPtr msg);
     void setVehicleAttitude(const VehicleAttitude::SharedPtr msg);
 
+    void setReferenceBodyVelocity(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
+
     // publisher
     void publishVehicleState();
 
@@ -35,7 +37,6 @@ public:
     }
 
     std::string state_name_;
-
 
     std::weak_ptr<MissionDirector> context_; // backreference to the mission director
 
@@ -47,6 +48,8 @@ protected:
     geometry_msgs::msg::TwistStamped tactile_sensor_pose_;
     VehicleAngularVelocity vehicle_angular_velocity_;
     VehicleAttitude vehicle_attitude_;
+
+    geometry_msgs::msg::TwistStamped reference_body_velocity_;
 
     std::vector<double> QuatToEuler(std::vector<double> q);
 };

@@ -36,6 +36,10 @@ void State::setVehicleAttitude(const VehicleAttitude::SharedPtr msg) {
     vehicle_attitude_ = *msg;
 }
 
+void State::setReferenceBodyVelocity(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+    reference_body_velocity_ = *msg;
+}
+
 void State::publishVehicleState() {
     geometry_msgs::msg::Vector3Stamped body_angle_msg;
     std::vector<double> q = {vehicle_attitude_.q[0], vehicle_attitude_.q[1], vehicle_attitude_.q[2], vehicle_attitude_.q[3]};

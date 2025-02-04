@@ -25,10 +25,13 @@ MissionDirector::MissionDirector() : Node("mission_director") {
     subscriber_vehicle_angular_velocity_ = this->create_subscription<VehicleAngularVelocity>("/fmu/out/vehicle_angular_velocity", 10, std::bind(&MissionDirector::vehicleAngularVelocityCallback, this, std::placeholders::_1));
     subscriber_vehicle_attitude_ = this->create_subscription<VehicleAttitude>("/fmu/out/vehicle_attitude", 10, std::bind(&MissionDirector::vehicleAttitudeCallback, this, std::placeholders::_1));
     
+    subscriber_reference_body_velocity_ = this->create_subscription<geometry_msgs::msg::TwistStamped>("/references/body_velocities", 10, std::bind(&MissionDirector::referenceBodyVelocityCallback, this, std::placeholders::_1));
+
     // publishers
     publisher_trajectory_setpoint_ = this->create_publisher<TrajectorySetpoint>("/fmu/in/trajectory_setpoint", 10);
     publisher_vehicle_command_ = this->create_publisher<VehicleCommand>("/fmu/in/vehicle_command", 10);
     publisher_offboard_control_mode_ = this->create_publisher<OffboardControlMode>("/fmu/in/offboard_control_mode", 10);
+    publisher_vehicle_rates_setpoint_ = this->create_publisher<VehicleRatesSetpoint>("/fmu/in/vehicle_rates_setpoint", 10);
 
     publisher_body_angles_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("/state/body_angles", 10);
     publisher_body_angular_velocity_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>("/state/body_angular_velocity", 10);
@@ -88,6 +91,11 @@ void MissionDirector::vehicleAttitudeCallback(const VehicleAttitude::SharedPtr m
     current_state_->setVehicleAttitude(msg);
 }
 
+void MissionDirector::referenceBodyVelocityCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->twist.linear.x);
+    current_state_->setReferenceBodyVelocity(msg);
+}
+
 void MissionDirector::publishTrajectorySetpoint(TrajectorySetpoint::SharedPtr msg) {
 	msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
     publisher_trajectory_setpoint_->publish(*msg); // publish the message
@@ -115,6 +123,11 @@ void MissionDirector::publishBodyAngles(geometry_msgs::msg::Vector3Stamped::Shar
 void MissionDirector::publishBodyAngularVelocity(geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
     msg->header.stamp = this->get_clock()->now(); // add the timestamp
     publisher_body_angular_velocity_->publish(*msg); // publish the message
+}
+
+void MissionDirector::publishVehicleRatesSetpoint(VehicleRatesSetpoint::SharedPtr msg) {
+    msg->timestamp = this->get_clock()->now().nanoseconds() / 1000; // add the timestamp
+    publisher_vehicle_rates_setpoint_->publish(*msg); // publish the message
 }
 
 int MissionDirector::getFrequency() const {
