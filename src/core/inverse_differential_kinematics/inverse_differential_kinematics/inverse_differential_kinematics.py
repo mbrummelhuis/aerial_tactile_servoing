@@ -21,17 +21,17 @@ class InverseDifferentialKinematics(Node):
         self.declare_parameter('frequency', 10)
 
         # Data
-        self.state_body_pose_ = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR
+        self.state_body_angles_ = np.array([0., 0., 0.]) # YPR about z, y, x
         self.state_joint_positions_ = np.array([0., 0., 0.])
-        self.state_body_velocity_ = np.array([0., 0., 0., 0., 0., 0.])
+        self.state_body_angular_velocity_ = np.array([0., 0., 0.]) # YPR rates
         self.state_joint_velocity_ = np.array([0., 0., 0.])
         self.virtual_end_effector_velocity_ = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, virtual velocity driving end-effector to reference pose
 
         # Subscribers
         self.state_position_subscription = self.create_subscription(
-            TwistStamped,
-            '/state/body_pose',
-            self.state_body_pose_callback,
+            Vector3Stamped,
+            '/state/body_angles',
+            self.state_body_angles_callback,
             10)
         self.state_joint_positions_subscription = self.create_subscription(
             Vector3Stamped,
@@ -39,7 +39,7 @@ class InverseDifferentialKinematics(Node):
             self.state_joint_position_callback,
             10)
         self.state_linear_velocity_subscription = self.create_subscription(
-            TwistStamped,
+            Vector3Stamped,
             '/state/body_velocity',
             self.state_body_velocity_callback,
             10)
@@ -70,9 +70,9 @@ class InverseDifferentialKinematics(Node):
     def timer_callback(self):
         # Set the state
         self.state = {
-            'yaw': self.state_body_pose_[3],
-            'pitch': self.state_body_pose_[4],
-            'roll': self.state_body_pose_[5],
+            'yaw': self.state_body_angles_[0],
+            'pitch': self.state_body_angles_[1],
+            'roll': self.state_body_angles_[2],
             'q1': self.state_joint_positions_[0],
             'q2': self.state_joint_positions_[1],
             'q3': self.state_joint_positions_[2],
@@ -108,13 +108,10 @@ class InverseDifferentialKinematics(Node):
         self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
     
     # Subscriber callbacks
-    def state_body_pose_callback(self, msg):
-        self.state_body_pose_[0] = msg.twist.linear.x # Body x
-        self.state_body_pose_[1] = msg.twist.linear.y # Body y
-        self.state_body_pose_[2] = msg.twist.linear.z # Body z
-        self.state_body_pose_[3] = msg.twist.angular.z # Yaw
-        self.state_body_pose_[4] = msg.twist.angular.y # Pitch
-        self.state_body_pose_[5] = msg.twist.angular.x # Roll
+    def state_body_angles_callback(self, msg):
+        self.state_body_angles_[0] = msg.vector.z # Yaw
+        self.state_body_angles_[1] = msg.vector.y # Pitch
+        self.state_body_angles_[2] = msg.vector.x # Roll
     
     def state_joint_position_callback(self, msg):
         self.state_joint_positions_[0] = msg.vector.x # q1
@@ -122,12 +119,9 @@ class InverseDifferentialKinematics(Node):
         self.state_joint_positions_[2] = msg.vector.z # q3
     
     def state_body_velocity_callback(self, msg):
-        self.state_body_velocity_[0] = msg.twist.linear.x # Body x
-        self.state_body_velocity_[1] = msg.twist.linear.y # Body y
-        self.state_body_velocity_[2] = msg.twist.linear.z # Body z
-        self.state_body_velocity_[3] = msg.twist.angular.z # Yaw
-        self.state_body_velocity_[4] = msg.twist.angular.y # Pitch
-        self.state_body_velocity_[5] = msg.twist.angular.x # Roll
+        self.state_body_angular_velocity_[0] = msg.twist.angular.z # Yaw
+        self.state_body_angular_velocity_[1] = msg.twist.angular.y # Pitch
+        self.state_body_angular_velocity_[2] = msg.twist.angular.x # Roll
 
     def state_joint_velocity_callback(self, msg):
         self.state_joint_velocity_[0] = msg.vector.x # q1
