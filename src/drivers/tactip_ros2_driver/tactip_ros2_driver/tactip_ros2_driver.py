@@ -23,7 +23,8 @@ class TactipDriver(Node):
         # publishers
         self.publisher_ = self.create_publisher(TwistStamped, '/sensors/tactip', 10)
 
-        self.sensor = TacTip()
+        self.sensor = TacTip(self.get_parameter('source').get_parameter_value().integer_value)
+        self.get_logger().info(f"Reading from /dev/video{self.get_parameter('source').get_parameter_value().integer_value}" )
 
         self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().integer_value) # seconds
         if self.get_parameter('test_model_time').get_parameter_value().bool_value:
@@ -36,7 +37,7 @@ class TactipDriver(Node):
         processed_image = self.sensor.process()
         data = self.sensor.predict(processed_image)
 
-        self.get_logger().info(f"TacTip data: {data}")
+        #self.get_logger().info(f"TacTip data: {data}")
 
         # publish the data
         msg = TwistStamped()
@@ -54,8 +55,10 @@ class TactipDriver(Node):
         for i in range(iterations):
             processed_image = self.sensor.process()
             data = self.sensor.predict(processed_image)
-        self.get_logger().info(f"Time taken for {iterations} iterations: {time.time() - start_time} [seconds]")
-        self.get_logger().info(f"Average time taken: {(time.time() - start_time)/iterations} [seconds]")
+        end_time = time.time()
+        self.get_logger().info(f"Time taken for {iterations} iterations: {end_time - start_time} [seconds]")
+        self.get_logger().info(f"Average time taken: {(end_time - start_time)/iterations} [seconds/it]")
+        self.get_logger().info(f"Iterations per secon: {iterations/(end_time - start_time)} [it/s]")
 
 def main(args=None):
     rclpy.init(args=args)

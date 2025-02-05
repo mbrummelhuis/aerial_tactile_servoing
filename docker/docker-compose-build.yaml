@@ -10,10 +10,9 @@ services:
     environment:
       - ROS_DOMAIN_ID=75
     devices:
-      - "/dev/video1:/dev/video1" # share video device for tactip
+      - "/dev/video0:/dev/video0" # share video device for tactip
       - "/dev/ttyUSB0:/dev/ttyUSB0" # share USB device for servos
     command: ats_bringup test_tactip.launch.py
-
 
   # UXRCE agent service by Anton -- Image has agent built in
   urxce-agent:
@@ -28,7 +27,7 @@ services:
     privileged: true
     network_mode: 'host'
     devices:
-      - "/dev/ttyS1:/dev/ttyS1"
+      - "/dev/ttyS1:/dev/ttyS1"  
   
   # Zenoh bridge for ROS2 network sharing -- use their Docker image
   zenoh-bridge:

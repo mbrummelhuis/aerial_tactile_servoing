@@ -28,28 +28,28 @@ WORKDIR /wiringOP
 RUN ./build clean && ./build
 
 # Configure user
-ARG USERNAME=ats-devcontainer
-ARG USER_UID=1000
-ARG USER_GID=$USER_UID
+# ARG USERNAME=ats-devcontainer
+# ARG USER_UID=1000
+# ARG USER_GID=$USER_UID
 
 # Create the user
-RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd -s /bin/bash --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    && mkdir /home/$USERNAME/ros2_ws \
-    && chown $USER_UID:$USER_GID /home/$USERNAME/ros2_ws
+#RUN groupadd --gid $USER_GID $USERNAME \
+#    && useradd -s /bin/bash --uid $USER_UID --gid $USER_GID -m $USERNAME \
+#    && mkdir /home/$USERNAME/ros2_ws \
+#    && chown $USER_UID:$USER_GID /home/$USERNAME/ros2_ws
 
 # Set up sudo
-RUN apt-get update && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME \
-    && rm -rf /var/lib/apt/lists/*
+#RUN apt-get update && apt-get install -y sudo \
+#    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+#    && chmod 0440 /etc/sudoers.d/$USERNAME \
+#    && rm -rf /var/lib/apt/lists/*
 
 # Switch user from root to $USERNAME
-USER $USERNAME
+#USER $USERNAME
 
 # Install python dependencies (for TacTip driver)
 RUN pip3 install -U \
-    numpy==2.2.0 \
+    numpy==1.26.4 \
     opencv-python==4.10.0.84 \
     scikit-image==0.24.0 \
     torch==2.5.1 \
@@ -58,9 +58,6 @@ RUN pip3 install -U \
     pandas==2.2.3 \
     matplotlib==3.9.2 \
     seaborn==0.13.2
-
-# Copy the entrypoint into the container root
-COPY docker/bashrc /home/$USERNAME/.bashrc
 
 # Change working directory to /ros2_ws
 WORKDIR /ros2_ws
@@ -83,7 +80,7 @@ RUN rosdep update \
 RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
 
 # Copy bashrc for argument completion
-COPY docker/bashrc /home/$USERNAME/.bashrc
+# COPY docker/bashrc /home/$USERNAME/.bashrc
 
 # Define entrypoint bash script
 # Should be ./entrypoint for docker build instead of devcontainter

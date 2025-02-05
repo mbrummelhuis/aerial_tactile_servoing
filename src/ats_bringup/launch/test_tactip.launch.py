@@ -16,7 +16,7 @@ def generate_launch_description():
         name='tactip_ros2_driver',
         output='screen',
         parameters=[
-            {'source': 4},
+            {'source': 0},
             {'frequency': 10},
             {'test_model_time': True}
         ],

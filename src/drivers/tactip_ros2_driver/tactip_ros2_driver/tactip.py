@@ -12,9 +12,9 @@ from .dependencies.label_encoder import BASE_MODEL_PATH
 from .dependencies.labelled_model import LabelledModel
 
 class TacTip:
-    def __init__(self):
+    def __init__(self, source = 4):
         # set up the camera
-        self.source = 4
+        self.source = source
         self.cam = cv2. VideoCapture(self.source)
         for _ in range(10):
             self.cam.read()

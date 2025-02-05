@@ -10,18 +10,22 @@ The package can be launched with 'ros2 launch ats_bringup test_servos.launch.py'
 def generate_launch_description():
     ld = LaunchDescription()
     
-    tactip_ros2_node = Node(
-        package='tactip_ros2_driver',
-        executable='tactip_ros2_driver',
-        name='tactip_ros2_driver',
+    feetech_servo_driver = Node(
+        package='driver_feetech_servo',
+        executable='driver_feetech_servo',
+        name='driver_feetech_servo',
         output='screen',
         parameters=[
-            {'source': 4},
-            {'frequency': 10},
-            {'test_model_time': True}
+            {'pivot_id': 1},
+            {'shoulder_id': 2},
+            {'elbow_id': 3},
+            {'limit_pivot': 10},
+            {'limit_shoulder': 6},
+            {'frequency': 30},
+            {'qos_depth': 10}
         ],
     )
     
-    ld.add_action(tactip_ros2_node)
+    ld.add_action(feetech_servo_driver)
     
     return ld
