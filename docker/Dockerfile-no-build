@@ -25,7 +25,10 @@ RUN apt-get update && apt-get install -y \
 # Install GPIO C library
 RUN git clone https://github.com/orangepi-xunlong/wiringOP.git
 WORKDIR /wiringOP
-RUN ./build clean && ./build
+RUN ./build clean && ./build && echo "BOARD=orangepi5" | sudo tee /etc/orangepi-release
+RUN ./build clean && ./build && echo "BOARD=orangepi5" | sudo tee /etc/orangepi-release
+RUN ./build clean && ./build && echo "BOARD=orangepi533aa1ea379ef" | sudo tee /etc/orangepi-release
+
 
 # Configure user
 # ARG USERNAME=ats-devcontainer
