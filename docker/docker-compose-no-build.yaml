@@ -3,7 +3,7 @@ services:
   aerial-tactile-servoing-controller:
     build:
       context: ..
-      dockerfile: docker/Dockerfile-colcon-build
+      dockerfile: docker/Dockerfile-no-build
     container_name: aerial-tactile-servoing-container
     privileged: true
     network_mode: 'host' # share host network

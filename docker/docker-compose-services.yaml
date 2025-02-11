@@ -1,0 +1,14 @@
+services:
+  # UXRCE agent service
+  urxce-agent:
+    image: antbre/uxrce_agent:latest
+    privileged: true
+    network_mode: 'host'
+    command: udp4 -p 8888 
+  # Mavlink router for QGC
+  mavlink-router:
+    image: mbrummelhuis/mavlink_router:latest
+    privileged: true
+    network_mode: 'host'
+    devices:
+      - "/dev/ttyS1:/dev/ttyS1"

@@ -77,15 +77,15 @@ RUN rosdep update \
     && rosdep install --from-paths src --ignore-src -r -y
 
 # Build the workspace
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
+#RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
 
 # Copy bashrc for argument completion
 # COPY docker/bashrc /home/$USERNAME/.bashrc
 
 # Define entrypoint bash script
-# Should be ./entrypoint for docker build instead of devcontainter
-COPY docker/entrypoint.sh /entrypoint.sh
-ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
+# First copy the entrypoint script into the container and then execute it with the CMD
+#COPY docker/entrypoint-no-build.sh /entrypoint.sh
+#ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
 # CMD is executed and replaced to any arguments passed
-CMD [ "Please specify a ROS2 launch package and file: <package name> <launch file>" ]
+#CMD [ "Please specify a ROS2 launch package and file: <package name> <launch file>" ]
