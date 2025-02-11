@@ -17,10 +17,10 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'pivot_id': 1},
-            {'shoulder_id': 12},
+            {'shoulder_id': 11},
             {'elbow_id': 3},
-            {'limit_pivot': 10},
-            {'limit_shoulder': 6},
+            {'limit_pivot': 4},
+            {'limit_shoulder': 3},
             {'frequency': 1},
             {'qos_depth': 10}
         ],
