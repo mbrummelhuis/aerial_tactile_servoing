@@ -68,7 +68,8 @@ RUN sudo chmod 777 -R .
 
 # Get the repository
 ARG REPO_URL=https://github.com/mbrummelhuis/aerial_tactile_servoing.git
-RUN git clone --depth 1 --recursive $REPO_URL && git submodule update --init --recursive
+RUN git clone --depth 1 --recursive $REPO_URL
+# Idk why but docker submodule update --init --recursive doesn't work
 
 WORKDIR /ros2_ws/aerial_tactile_servoing
 
