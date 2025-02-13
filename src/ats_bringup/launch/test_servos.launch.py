@@ -37,7 +37,7 @@ def generate_launch_description():
             {'elbow_id': 13},
             {'limit_pivot': 4},
             {'limit_shoulder': 10},
-            {'home_velocity': 70},
+            {'home_velocity': 50},
             {'port': '/dev/ttyUSB0'},
             {'frequency': 1},
             {'qos_depth': 10}
