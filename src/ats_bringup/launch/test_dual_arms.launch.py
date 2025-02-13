@@ -42,6 +42,7 @@ def generate_launch_description():
             {'home_velocity': 50},
             {'port': '/dev/ttyUSB0'},
             {'frequency': 1},
+            {'namespace': 'servo1'},
             {'qos_depth': 10}
         ],
         arguments=['--ros-args', '--log-level', LOG_LEVEL]
@@ -59,7 +60,8 @@ def generate_launch_description():
             {'limit_shoulder': 10},
             {'home_velocity': 50},
             {'port': '/dev/ttyUSB0'},
-            {'frequency': 1},
+            {'frequency': 50},
+            {'namespace': 'servo2'},
             {'qos_depth': 10}
         ],
         arguments=['--ros-args', '--log-level', LOG_LEVEL]

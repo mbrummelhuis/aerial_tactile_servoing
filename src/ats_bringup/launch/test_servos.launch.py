@@ -40,9 +40,10 @@ def generate_launch_description():
             {'home_velocity': 50},
             {'port': '/dev/ttyUSB0'},
             {'frequency': 20},
+            {'namespace': 'servo1'},
             {'qos_depth': 10}
         ],
-        arguments=['--ros-args', '--log-level', 'debug']
+        arguments=['--ros-args', '--log-level', 'info']
     )
 
     ld.add_action(feetech_servo_driver)
