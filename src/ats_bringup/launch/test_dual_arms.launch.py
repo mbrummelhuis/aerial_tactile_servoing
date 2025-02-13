@@ -8,6 +8,8 @@ Launch file for testing the ROS2 Dynamixel driver (for Feetech servos).
 The package can be launched with 'ros2 launch ats_bringup test_servos.launch.py'
 """
 
+LOG_LEVEL = 'info'
+
 def generate_launch_description():
     ld = LaunchDescription()
 
@@ -26,25 +28,44 @@ def generate_launch_description():
     # White: 9
     # Yellow: 10
     
-    feetech_servo_driver = Node(
+    feetech_servo_driver1 = Node(
         package='feetech_ros2_driver',
         executable='feetech_ros2_driver',
-        name='feetech_ros2_driver',
+        name='feetech_ros2_driver-1',
+        output='screen',
+        parameters=[
+            {'pivot_id': 1},
+            {'shoulder_id':2},
+            {'elbow_id': 3},
+            {'limit_pivot': 4},
+            {'limit_shoulder': 10},
+            {'home_velocity': 50},
+            {'port': '/dev/ttyUSB0'},
+            {'frequency': 1},
+            {'qos_depth': 10}
+        ],
+        arguments=['--ros-args', '--log-level', LOG_LEVEL]
+    )
+    feetech_servo_driver2 = Node(
+        package='feetech_ros2_driver',
+        executable='feetech_ros2_driver',
+        name='feetech_ros2_driver-2',
         output='screen',
         parameters=[
             {'pivot_id': 11},
-            {'shoulder_id':2},
+            {'shoulder_id':32},
             {'elbow_id': 13},
             {'limit_pivot': 4},
             {'limit_shoulder': 10},
             {'home_velocity': 50},
             {'port': '/dev/ttyUSB0'},
-            {'frequency': 20},
+            {'frequency': 1},
             {'qos_depth': 10}
         ],
-        arguments=['--ros-args', '--log-level', 'debug']
+        arguments=['--ros-args', '--log-level', LOG_LEVEL]
     )
 
-    ld.add_action(feetech_servo_driver)
+    ld.add_action(feetech_servo_driver1)
+    ld.add_action(feetech_servo_driver2)
     
     return ld
