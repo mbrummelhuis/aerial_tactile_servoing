@@ -57,42 +57,42 @@ void MissionDirector::execute() {
 }
 
 void MissionDirector::vehicleStatusCallback(const VehicleStatus::SharedPtr msg) {
-    RCLCPP_INFO(this->get_logger(), "I heard: [%d]", msg->nav_state);
+    RCLCPP_DEBUG(this->get_logger(), "I heard: [%d]", msg->nav_state);
     current_state_->setVehicleStatus(msg);
 }
 
 void MissionDirector::vehicleDistanceSensorCallback(const DistanceSensor::SharedPtr msg) {
-    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->current_distance);
+    RCLCPP_DEBUG(this->get_logger(), "I heard: [%f]", msg->current_distance);
     current_state_->setVehicleAltitude(msg);
 }
 
 void MissionDirector::vehicleLocalPositionCallback(const VehicleLocalPosition::SharedPtr msg) {
-    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->x);
+    RCLCPP_DEBUG(this->get_logger(), "I heard: [%f]", msg->x);
     current_state_->setVehicleLocalPosition(msg);
 }
 
 void MissionDirector::vehicleLandDetectedCallback(const VehicleLandDetected::SharedPtr msg) {
-    RCLCPP_INFO(this->get_logger(), "I heard: [%i]", msg->landed);
+    RCLCPP_DEBUG(this->get_logger(), "I heard: [%i]", msg->landed);
     current_state_->setVehicleLandDetected(msg);
 }
 
 void MissionDirector::tactileSensorPoseCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
-    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->twist.linear.x);
+    RCLCPP_DEBUG(this->get_logger(), "I heard: [%f]", msg->twist.linear.x);
     current_state_->setTactileSensorPose(msg);
 }
 
 void MissionDirector::vehicleAngularVelocityCallback(const VehicleAngularVelocity::SharedPtr msg) {
-    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->xyz[0]);
+    RCLCPP_DEBUG(this->get_logger(), "I heard: [%f]", msg->xyz[0]);
     current_state_->setVehicleAngularVelocity(msg);
 }
 
 void MissionDirector::vehicleAttitudeCallback(const VehicleAttitude::SharedPtr msg) {
-    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->q[0]);
+    RCLCPP_DEBUG(this->get_logger(), "I heard: [%f]", msg->q[0]);
     current_state_->setVehicleAttitude(msg);
 }
 
 void MissionDirector::referenceBodyVelocityCallback(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
-    RCLCPP_INFO(this->get_logger(), "I heard: [%f]", msg->twist.linear.x);
+    RCLCPP_DEBUG(this->get_logger(), "I heard: [%f]", msg->twist.linear.x);
     current_state_->setReferenceBodyVelocity(msg);
 }
 
