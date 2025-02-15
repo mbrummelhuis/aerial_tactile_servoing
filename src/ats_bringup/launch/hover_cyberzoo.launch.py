@@ -11,6 +11,7 @@ The package can be launched with 'ros2 launch tucan_bringup example.launch.py'
 
 def generate_launch_description():
     ld = LaunchDescription()
+<<<<<<< HEAD
     
 
     mission_director = Node(
@@ -18,8 +19,20 @@ def generate_launch_description():
         executable="mission_director",
         name="mission_director",
         output="screen",
+=======
+
+    mission_director = Node(
+        package='mission_director',
+        executable='mission_director',
+        name='mission_director',
+        output='screen',
+>>>>>>> 71c10fa (Trying to fly)
         arguments=['--ros-args', '--log-level', 'info']
     )
 
     ld.add_action(mission_director)
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 71c10fa (Trying to fly)
     return ld

@@ -1,8 +1,7 @@
 #ifndef STATE_HOVER_HPP
 #define STATE_HOVER_HPP
 
-#include "rclcpp/rclcpp.hpp"
-#include "state.hpp"
+#include "mission_director/state.hpp"
 
 class StateHover : public State {
 public:

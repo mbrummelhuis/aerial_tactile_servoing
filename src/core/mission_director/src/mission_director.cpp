@@ -8,8 +8,6 @@
 #include <mission_director/state.hpp>
 #include <mission_director/state_disarmed.hpp>
 
-using namespace px4_msgs::msg;
-
 /* @brief 
 */
 MissionDirector::MissionDirector() : Node("mission_director") {

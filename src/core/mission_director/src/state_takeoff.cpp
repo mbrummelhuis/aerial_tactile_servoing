@@ -1,8 +1,8 @@
 #include <string>
 #include <chrono>
 
-#include "state_takeoff.hpp"
-#include "state_hover.hpp"
+#include "mission_director/state_takeoff.hpp"
+#include "mission_director/state_hover.hpp"
 
 using namespace std::chrono;
 

@@ -2,15 +2,16 @@
 #define STATE_HPP
 
 // includes
-#include "rclcpp/rclcpp.hpp"
-
 #include "mission_director/mission_director.hpp"
-#include "mission_director/state.hpp"
+
+using namespace px4_msgs::msg;
+
+class MissionDirector;  // Forward declaration
 
 class State{
 public:
     State();
-    virtual ~State() = default;
+    virtual ~State() = default;  // Ensure a virtual destructor
 
     virtual void checkTransition();
 

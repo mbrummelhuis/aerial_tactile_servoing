@@ -1,6 +1,6 @@
 #include <string>
 
-#include "state_disarmed.hpp"
+#include "mission_director/state_disarmed.hpp"
 
 /* @brief Disarmed state
             Waits until the drone is armed and put in offboard mode through the remote control

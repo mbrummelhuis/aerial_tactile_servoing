@@ -1,8 +1,8 @@
 #include <string>
 #include <chrono>
 
-#include "state_hover.hpp"
-#include "state_land.hpp"
+#include "mission_director/state_hover.hpp"
+#include "mission_director/state_land.hpp"
 
 using namespace std::chrono;
 
@@ -25,7 +25,7 @@ void StateHover::execute() {
     context_.lock()->publishOffboardControlmode(std::make_shared<OffboardControlMode>(offboard_msg));
 
 	TrajectorySetpoint setpoint_msg{};
-	setpoint_msg.position = {vehicle_local_position_.x, vehicle_local_position_.y, vehicle_local_position_.z};
+	setpoint_msg.position = {0.0, 0.0, -2.0};
 	setpoint_msg.yaw = vehicle_local_position_.heading; // [-PI:PI]
     context_.lock()->publishTrajectorySetpoint(std::make_shared<TrajectorySetpoint>(setpoint_msg));
 

@@ -1,10 +1,10 @@
 #ifndef STATE_DISARMED_HPP
 #define STATE_DISARMED_HPP
 
-#include "mission_director.hpp"
-#include "state_takeoff.hpp"
+#include "mission_director/mission_director.hpp"
+#include "mission_director/state_takeoff.hpp"
 
-#include "state.hpp"
+#include "mission_director/state.hpp"
 
 class StateDisarmed : public State {
 public:

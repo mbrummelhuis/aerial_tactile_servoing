@@ -1,8 +1,8 @@
 #include <string>
 #include <chrono>
 
-#include "state_ats.hpp"
-#include "state_hover.hpp"
+#include "mission_director/state_ats.hpp"
+#include "mission_director/state_hover.hpp"
 
 #include <px4_msgs/msg/vehicle_rates_setpoint.hpp>
 
