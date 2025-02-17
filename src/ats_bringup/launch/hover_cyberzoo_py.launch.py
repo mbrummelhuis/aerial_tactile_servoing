@@ -13,10 +13,15 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     mission_director = Node(
-        package='mission_director',
-        executable='mission_director',
-        name='mission_director',
+        package='mission_director_py',
+        executable='mission_director_py',
+        name='mission_director_py',
         output='screen',
+        parameters=[
+            {'frequency': 10.},
+            {'hover_duration': 10.},
+            {'landing_velocity': 0.1}
+        ],
         arguments=['--ros-args', '--log-level', 'info']
     )
 
