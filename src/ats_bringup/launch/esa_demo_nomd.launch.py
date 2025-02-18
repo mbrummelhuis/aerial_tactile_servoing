@@ -11,18 +11,6 @@ The package can be launched with 'ros2 launch ats_bringup esa_demo.launch.py'
 def generate_launch_description():
     ld = LaunchDescription()
 
-    mission_director = Node(
-        package='mission_director_py',
-        executable='mission_director_py',
-        name='mission_director_py',
-        output='screen',
-        parameters=[
-            {'frequency': 20.},
-            {'hover_duration': 6.},
-            {'landing_velocity': 0.25}
-        ],
-        arguments=['--ros-args', '--log-level', 'info']
-    )
     servo_driver = Node(
         package='feetech_ros2_driver',
         executable='feetech_ros2_driver',
@@ -46,7 +34,6 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'info']
     )
 
-    ld.add_action(mission_director)
     ld.add_action(servo_driver)
     
     return ld

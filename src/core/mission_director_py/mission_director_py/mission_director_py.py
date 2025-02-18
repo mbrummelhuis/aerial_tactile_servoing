@@ -41,7 +41,8 @@ class MissionDirectorPy(Node):
             '/md/input_state', 
             self.input_state_callback, 
             10)
-
+        
+        # Position setpoint publishers
         self.publisher_vehicle_trajectory_setpoint = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', 10)
         self.publisher_offboard_control_mode = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode',10)
 
@@ -53,7 +54,7 @@ class MissionDirectorPy(Node):
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
 
         # set initial state
-        self.FSM_state = 'disarmed'
+        self.FSM_state = 'entrypoint'
 
         # Initialize vehicle data
         self.vehicle_status = VehicleStatus()
@@ -73,14 +74,23 @@ class MissionDirectorPy(Node):
 
         self.declare_parameter('landing_velocity', 0.1)
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
-        self.landing_start_altitude = None
         self.previous_next_landing_altitude = 1.1
 
+        self.x_setpoint = 0.0
+        self.y_setpoint = 0.0
 
         self.input_state = 0
 
     def timer_callback(self):
         match self.FSM_state:
+            case('entrypoint'):
+                self.x_setpoint = self.vehicle_local_position.x
+                self.y_setpoint = self.vehicle_local_position.y
+                self.get_logger().info("Waiting for position fix")
+                if self.x_setpoint != 0.0 and self.y_setpoint != 0.0:
+                    self.get_logger().info(f"Got position fix X: {self.x_setpoint} Y: {self.y_setpoint}")
+                    self.FSM_state = 'disarmed'
+
             case('disarmed'):
                 self.publishOffboardControlMode()
                 self.publishTrajectorySetpoint(0.0, 0.0, 0.0, 0.0) # Start publishing messages to px4
@@ -109,9 +119,10 @@ class MissionDirectorPy(Node):
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
                 # send takeoff command
-                self.publishTrajectorySetpoint(0.0, 0.0, self.takeoff_altitude, 0.0)
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
-                self.publishPositionReferencesArm(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                # Raise arms slightly on takeoff
+                self.publishPositionReferencesArm(0.2, 0.0, 0.0, 0.2, 0.0, 0.0)
                 
                 # check if vehicle has reached takeoff altitude
                 if abs(current_altitude) > abs(self.takeoff_altitude) and not self.input_state==1:
@@ -121,34 +132,30 @@ class MissionDirectorPy(Node):
                 elif (self.input_state == 1):
                     self.get_logger().info(f'Input state is 1 -- switching to end hover')
                     self.FSM_state = 'end_hover'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
                 elif (self.input_state == 3):
                     self.get_logger().info(f'Input state is 3 -- manually transitioning to start_hover')
                     self.FSM_state = 'start_hover'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
 
             case('start_hover'):
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(0.0, 0.0, self.takeoff_altitude, 1.0)
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.get_logger().info(f'Hovered for {self.hover_time} seconds -- switching to Y')
                     self.FSM_state = 'Y'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
                 elif (self.input_state == 1):
                     self.get_logger().info(f'Input state is 1 -- switching to end hover')
                     self.FSM_state = 'end_hover'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
 
             case('Y'):
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(0.0, 0.0, self.takeoff_altitude, 0.0)
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
                 # Angles associated with Y
                 self.publishPositionReferencesArm(
@@ -158,18 +165,16 @@ class MissionDirectorPy(Node):
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.get_logger().info(f'Y for {self.hover_time} seconds -- switching to M')
                     self.FSM_state = 'M'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
                 elif (self.input_state == 1):
                     self.get_logger().info(f'Input state is 1 -- switching to end hover')
                     self.FSM_state = 'end_hover'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
 
             case('M'):
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(0.0, 0.0, self.takeoff_altitude, 0.0)
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
                 # Angles associated with M
                 self.publishPositionReferencesArm(
@@ -179,67 +184,93 @@ class MissionDirectorPy(Node):
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.get_logger().info(f'M for {self.hover_time} seconds -- switching to C')
                     self.FSM_state = 'C'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
                 elif (self.input_state == 1):
                     self.get_logger().info(f'Input state is 1 -- switching to end hover')
                     self.FSM_state = 'end_hover'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
 
             case('C'):
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(0.0, 0.0, self.takeoff_altitude, 0.0)
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
                 # Angles associated with C
                 self.publishPositionReferencesArm(
-                    -1.3, 0.0, -0.8, # 0.7, 0.0, -0.8
-                    1.6, 0.0, 2.8) 
+                    1.3, 0.0, 3.0, # 0.7, 0.0, -0.8
+                    -1.6, 0.0, 3.0) 
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.get_logger().info(f'C for {self.hover_time} seconds -- switching to A')
                     self.FSM_state = 'A'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
                 elif (self.input_state == 1):
                     self.get_logger().info(f'Input state is 1 -- switching to end hover')
                     self.FSM_state = 'end_hover'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
 
             case('A'):
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(0.0, 0.0, self.takeoff_altitude, 0.0)
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
                 # Angles associated with A
                 self.publishPositionReferencesArm(
                     0.8, 0.0, 0.1,
-                    0.8, 0.0, 0.1)
+                    0.8, 0.0, -0.1)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and self.input_state==0:
-                    self.get_logger().info(f'A for {self.hover_time} seconds -- switching to end hover')
-                    self.FSM_state = 'end_hover'
-                    self.landing_start_altitude = self.vehicle_local_position.z
+                    self.get_logger().info(f'A for {self.hover_time} seconds -- switching to circle_start')
+                    self.FSM_state = 'circle_start'
                     self.state_start_time = datetime.datetime.now()
                 
                 elif (self.input_state == 1):
                     self.get_logger().info(f'Input state is 1 -- switching to end hover')
                     self.FSM_state = 'end_hover'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
                 
                 elif (self.input_state == 2):
                     self.get_logger().info(f'Input state is 2 -- repeating')
                     self.FSM_state = 'Y'
-                    self.landing_start_altitude = self.vehicle_local_position.z
                     self.state_start_time = datetime.datetime.now()
+                
+
+            case('circle_start'):
+                # create and publish setpoint message
+                self.publishOffboardControlMode()
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
+
+                # Back to home position
+                self.publishPositionReferencesArm(
+                    1.5, 0.0, 0.2, 
+                    -1.3, 0.0, -3.3)
+                if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time:
+                    self.get_logger().info(f'A for {self.hover_time} seconds -- switching to executing circle manoeuvre')
+                    self.FSM_state = 'circle_exec'
+                    self.state_start_time = datetime.datetime.now()
+                elif (self.input_state == 1):
+                    self.get_logger().info(f'Input state is 1 -- switching to end hover')
+                    self.FSM_state = 'end_hover'
+                    self.state_start_time = datetime.datetime.now()     
+
+            case('circle_start'):
+                # create and publish setpoint message
+                self.publishOffboardControlMode()
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
+
+                # Back to home position
+                self.publishPositionReferencesArm(
+                    -1.3, 0.0, 0.2, 
+                    1.5, 0.0, -3.3)
+                if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time:
+                    self.get_logger().info(f'A for {self.hover_time} seconds -- switching to end_hover')
+                    self.FSM_state = 'end_hover'
+                    self.state_start_time = datetime.datetime.now()    
 
             case('end_hover'):
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(0.0, 0.0, self.takeoff_altitude, 0.0)
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
                 # Back to home position
                 self.publishPositionReferencesArm(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -248,7 +279,6 @@ class MissionDirectorPy(Node):
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time:
                     self.get_logger().info(f'End hover for {self.hover_time} seconds -- switching to land')
                     self.FSM_state = 'land'
-                    self.landing_start_altitude = self.vehicle_local_position.z
 
             case('land'):
                 self.get_logger().debug('Landing')
@@ -256,7 +286,7 @@ class MissionDirectorPy(Node):
                 next_landing_altitude = self.vehicle_local_position.z + self.landing_velocity*self.timer_period
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(0.0, 0.0, next_landing_altitude, 0.0)
+                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, next_landing_altitude, 0.0)
                 if abs(self.previous_next_landing_altitude - next_landing_altitude) < 0.001:
                     self.get_logger().info('Going to landed state')
                     self.FSM_state = 'landed'
@@ -287,6 +317,7 @@ class MissionDirectorPy(Node):
         self.publisher_vehicle_trajectory_setpoint.publish(msg)
     
     def publishPositionReferencesArm(self, q11, q12, q13, q21, q22, q23):
+        self.get_logger().debug(f'Publishing position references: ({q11}, {q12}, {q13}) ({q21}, {q22}, {q23})')
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.twist.linear.x = q11
