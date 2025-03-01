@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'ats_velocity_controller = ats_velocity_controller.ats_velocity_controller:main',
         ],
     },
 )

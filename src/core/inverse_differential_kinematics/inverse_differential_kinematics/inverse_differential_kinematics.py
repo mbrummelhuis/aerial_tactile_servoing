@@ -18,7 +18,7 @@ class InverseDifferentialKinematics(Node):
         self.jacobian = CentralisedJacobian()
 
         # Parameters
-        self.declare_parameter('frequency', 10)
+        self.declare_parameter('frequency', 10.)
 
         # Data
         self.state_body_angles_ = np.array([0., 0., 0.]) # YPR about z, y, x
@@ -68,6 +68,9 @@ class InverseDifferentialKinematics(Node):
         self.timer = self.create_timer(self.period, self.timer_callback)
      
     def timer_callback(self):
+        # Rotate commanded EE velocity to world frame
+
+
         # Set the state
         self.state = {
             'yaw': self.state_body_angles_[0],
@@ -106,6 +109,19 @@ class InverseDifferentialKinematics(Node):
         # Publish the references
         self.reference_linear_velocity_publisher.publish(reference_body_rates)
         self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
+    
+    def rotate_to_world_frame(self, velocity):
+        """
+        Rotate the commanded end-effector velocity to the world frame.
+        """
+        # Get the rotation matrix from body to world frame
+        R = self.jacobian.get_rotation_matrix()
+    
+    def forward_kinematics(self):
+        """
+        Compute the forward kinematics of the system.
+        """
+        
     
     # Subscriber callbacks
     def state_body_angles_callback(self, msg):

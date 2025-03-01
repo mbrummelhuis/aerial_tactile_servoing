@@ -14,12 +14,12 @@ class ATSVelocityController(Node):
         super().__init__('ats_velocity_controller')
 
         # Parameters
-        self.declare_parameter('frequency', 10)
-        self.declare_parameter('kp', 1.0)
-        self.declare_parameter('ki', 0.0)
-        self.declare_parameter('kd', 0.0)
-        self.declare_parameter('max_integral', 1.0)
-        self.declare_parameter('ewma_alpha', 0.3)
+        self.declare_parameter('frequency', 10.)
+        self.declare_parameter('kp', 1.0) # Proportional gain
+        self.declare_parameter('ki', 0.0) # Integral gain
+        self.declare_parameter('kd', 0.0) # Derivative gain
+        self.declare_parameter('max_integral', 1.0) # Integrator saturation limit
+        self.declare_parameter('ewma_alpha', 0.3) # Exponential moving average alpha for derivatieve smoothing
 
         # Initialization log message
         self.get_logger().info("Velocity controller node initialized")
@@ -40,7 +40,7 @@ class ATSVelocityController(Node):
         self.previous_error = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
         # timer
-        self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().integer_value) # seconds
+        self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().double_value) # seconds
         self.timer = self.create_timer(self.period, self.timer_callback)
 
     '''
@@ -53,7 +53,7 @@ class ATSVelocityController(Node):
         # integral with saturation
         max_integral = self.get_parameter('max_integral').get_parameter_value().double_value
         integral_gain = self.get_parameter('ki').get_parameter_value().double_value
-        self.integral = integral_gain * max(min(self.integral + error*self.period, max_integral),-max_integral)
+        self.integral = np.clip(self.integral + integral_gain*error*self.period, -max_integral, max_integral)
 
         # Derivative term with EWMA smoothing
         ewma_alpha = self.get_parameter('ewma_alpha').get_parameter_value().double_value
@@ -64,8 +64,6 @@ class ATSVelocityController(Node):
         # Compute the control signal (end-effector velocity)
         proportional_gain = self.get_parameter('kp').get_parameter_value().double_value
         control_signal = proportional_gain*error + self.integral + self.derivative
-
-        # TO DO: add transformation from interaction frame to 
 
         # Construct the message
         msg = TwistStamped()
@@ -79,20 +77,20 @@ class ATSVelocityController(Node):
         self.ee_reference_velocity_subscriber_.publish(msg)
 
     def ee_measured_pose_callback(self, msg):
-        self.tactip_pose_[0]=msg.twist.linear.x
-        self.tactip_pose_[1]=msg.twist.linear.y
-        self.tactip_pose_[2]=msg.twist.linear.z
-        self.tactip_pose_[3]=msg.twist.angular.x
-        self.tactip_pose_[4]=msg.twist.angular.y
-        self.tactip_pose_[5]=msg.twist.angular.z
+        self.tactip_pose_[0]=msg.twist.linear.x # end effector measured x in contact frame (6d)
+        self.tactip_pose_[1]=msg.twist.linear.y # end effector measured y in contact frame (6d)
+        self.tactip_pose_[2]=msg.twist.linear.z # end effector measured z in contact frame (3d)
+        self.tactip_pose_[3]=msg.twist.angular.z # end effector measured yaw in contact frame (6d) TODO: UNITS?
+        self.tactip_pose_[4]=msg.twist.angular.y # end effector measured pitch in contact frame (3d)
+        self.tactip_pose_[5]=msg.twist.angular.x # end effector measured roll in contact frame (3d)
 
     def ee_reference_pose_callback(self, msg):
-        self.reference_pose_[0]=msg.twist.linear.x
-        self.reference_pose_[1]=msg.twist.linear.y
-        self.reference_pose_[2]=msg.twist.linear.z
-        self.reference_pose_[3]=msg.twist.angular.x
-        self.reference_pose_[4]=msg.twist.angular.y
-        self.reference_pose_[5]=msg.twist.angular.z
+        self.reference_pose_[0]=msg.twist.linear.x # end effector x ref in contact frame (6d)
+        self.reference_pose_[1]=msg.twist.linear.y # end effector y ref in contact frame (6d)
+        self.reference_pose_[2]=msg.twist.linear.z # end effector z ref in contact frame (3d)
+        self.reference_pose_[3]=msg.twist.angular.z # end effector yaw ref in contact frame (6d) TODO: UNITS?
+        self.reference_pose_[4]=msg.twist.angular.y # end effector pitch ref in contact frame (3d)
+        self.reference_pose_[5]=msg.twist.angular.x # end effector roll ref in contact frame (3d)
 
 def main(args=None):
     rclpy.init(args=args)

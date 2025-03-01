@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'ats_planner-node = ats_planner.ats_planner:main',
+            'ats_planner = ats_planner.ats_planner:main',
         ],
     },
 )
