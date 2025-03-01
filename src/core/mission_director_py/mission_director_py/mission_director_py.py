@@ -125,10 +125,14 @@ class MissionDirectorPy(Node):
                 self.publishPositionReferencesArm(0.2, 0.0, 0.0, 0.2, 0.0, 0.0)
                 
                 # check if vehicle has reached takeoff altitude
-                if abs(current_altitude) > abs(self.takeoff_altitude) and not self.input_state==1:
+                if abs(current_altitude)+0.1 > abs(self.takeoff_altitude) and not self.input_state==1:
                     self.get_logger().info('Reached takeoff altitude -- switching to hover')
                     self.FSM_state = 'start_hover'
                     self.state_start_time = datetime.datetime.now()
+                if (self.input_state==5):
+                    self.get_logger().info('Manually triggered -- switching to hover')
+                    self.FSM_state = 'start_hover'
+                    self.state_start_time = datetime.datetime.now()                    
                 elif (self.input_state == 1):
                     self.get_logger().info(f'Input state is 1 -- switching to end hover')
                     self.FSM_state = 'end_hover'
@@ -198,7 +202,7 @@ class MissionDirectorPy(Node):
                 # Angles associated with C
                 self.publishPositionReferencesArm(
                     1.3, 0.0, 3.0, # 0.7, 0.0, -0.8
-                    -1.6, 0.0, 3.0) 
+                    -1.6, 0.0, -3.0) 
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.get_logger().info(f'C for {self.hover_time} seconds -- switching to A')
@@ -253,7 +257,7 @@ class MissionDirectorPy(Node):
                     self.FSM_state = 'end_hover'
                     self.state_start_time = datetime.datetime.now()     
 
-            case('circle_start'):
+            case('circle_exec'):
                 # create and publish setpoint message
                 self.publishOffboardControlMode()
                 self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
@@ -273,7 +277,9 @@ class MissionDirectorPy(Node):
                 self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
                 # Back to home position
-                self.publishPositionReferencesArm(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                self.publishPositionReferencesArm(
+                    0.2, 0.0, 0.0, 
+                    0.2, 0.0, 0.0)
 
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time:

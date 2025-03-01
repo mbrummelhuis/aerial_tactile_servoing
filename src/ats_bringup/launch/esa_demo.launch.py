@@ -17,9 +17,9 @@ def generate_launch_description():
         name='mission_director_py',
         output='screen',
         parameters=[
-            {'frequency': 20.},
-            {'hover_duration': 6.},
-            {'landing_velocity': 0.25}
+            {'frequency': 15.},
+            {'hover_duration': 4.},
+            {'landing_velocity': 0.1}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
@@ -39,7 +39,7 @@ def generate_launch_description():
             {'limit_shoulder': 10},
             {'home_velocity': 50},
             {'port': '/dev/ttyUSB0'},
-            {'frequency': 20},
+            {'frequency': 15},
             {'namespace': 'servo'},
             {'qos_depth': 10}
         ],
