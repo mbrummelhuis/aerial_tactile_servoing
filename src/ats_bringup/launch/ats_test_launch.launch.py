@@ -36,7 +36,19 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'info']
     )
 
+    inverse_dif_kinematics = Node(
+        package='inverse_differential_kinematics',
+        executable='inverse_differential_kinematics',
+        name='inverse_differential_kinematics',
+        output='screen',
+        parameters=[
+            {'frequency': 15.}
+        ],
+        arguments=['--ros-args', '--log-level', 'info']
+    )
+
     ld.add_action(ats_planner)
     ld.add_action(ats_velocity_controller)
+    ld.add_action(inverse_dif_kinematics)
     
     return ld

@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'inverse_differential_kinematics = inverse_differential_kinematics.inverse_differential_kinematics:main'
         ],
     },
 )
