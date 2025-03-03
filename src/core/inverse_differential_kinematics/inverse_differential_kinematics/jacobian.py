@@ -55,6 +55,8 @@ class CentralisedJacobian():
 
     T_A = Matrix([[eye(3), zeros(3, 3)],
                     [zeros(3, 3), T_euler]])
+    
+    R_Ie = Matrix([[-(sin(pitch)*sin(roll)*cos(yaw) - sin(yaw)*cos(roll))*sin(q_1)*sin(q_2) + (sin(pitch)*cos(roll)*cos(yaw) + sin(roll)*sin(yaw))*sin(q_2)*cos(q_1) - cos(pitch)*cos(q_2)*cos(yaw), (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))*(sin(pitch)*cos(roll)*cos(yaw) + sin(roll)*sin(yaw)) + (sin(pitch)*sin(roll)*cos(yaw) - sin(yaw)*cos(roll))*(-sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3)) + sin(q_2)*sin(q_3)*cos(pitch)*cos(yaw), (sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*(sin(pitch)*cos(roll)*cos(yaw) + sin(roll)*sin(yaw)) + (sin(pitch)*sin(roll)*cos(yaw) - sin(yaw)*cos(roll))*(sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1)) - sin(q_2)*cos(pitch)*cos(q_3)*cos(yaw)], [-(sin(pitch)*sin(roll)*sin(yaw) + cos(roll)*cos(yaw))*sin(q_1)*sin(q_2) + (sin(pitch)*sin(yaw)*cos(roll) - sin(roll)*cos(yaw))*sin(q_2)*cos(q_1) - sin(yaw)*cos(pitch)*cos(q_2), (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))*(sin(pitch)*sin(yaw)*cos(roll) - sin(roll)*cos(yaw)) + (sin(pitch)*sin(roll)*sin(yaw) + cos(roll)*cos(yaw))*(-sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3)) + sin(q_2)*sin(q_3)*sin(yaw)*cos(pitch), (sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*(sin(pitch)*sin(yaw)*cos(roll) - sin(roll)*cos(yaw)) + (sin(pitch)*sin(roll)*sin(yaw) + cos(roll)*cos(yaw))*(sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1)) - sin(q_2)*sin(yaw)*cos(pitch)*cos(q_3)], [sin(pitch)*cos(q_2) - sin(q_1)*sin(q_2)*sin(roll)*cos(pitch) + sin(q_2)*cos(pitch)*cos(q_1)*cos(roll), (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))*cos(pitch)*cos(roll) + (-sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3))*sin(roll)*cos(pitch) - sin(pitch)*sin(q_2)*sin(q_3), (sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*cos(pitch)*cos(roll) + (sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1))*sin(roll)*cos(pitch) + sin(pitch)*sin(q_2)*cos(q_3)]])
 
     def __init__(self):
         self.jfunc = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.jacobian, modules='numpy')
@@ -63,6 +65,8 @@ class CentralisedJacobian():
         self.J_G_uncontrolled_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.J_G_uncontrolled, modules='numpy')
 
         self.T_A_func = lambdify((self.yaw, self.pitch), self.T_A, modules='numpy')
+
+        self.R_Ie_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.R_Ie, modules='numpy')
 
         self.state = [0., 0., 0., 0., 0., 0.]
     
@@ -131,6 +135,18 @@ class CentralisedJacobian():
         - The evaluated result as a NumPy array.
         """
         return self.T_A_func(self.state[0], self.state[1])
+
+    def evaluate_rotation_matrix(self):
+        """
+        Evaluate the rotation matrix between the inertial and end-effector frame with a list or NumPy array of states.
+
+        Parameters:
+        - values: List or NumPy array of states (length 6).
+
+        Returns:
+        - The evaluated result as a NumPy array.
+        """
+        return self.R_Ie_func(*self.state)
     
     def update_state(self, values):
         """
