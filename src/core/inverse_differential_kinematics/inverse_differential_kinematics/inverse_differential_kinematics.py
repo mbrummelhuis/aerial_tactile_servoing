@@ -5,7 +5,7 @@ import numpy as np
 from geometry_msgs.msg import Vector3Stamped
 from geometry_msgs.msg import TwistStamped
 
-from jacobian import CentralisedJacobian
+from jacobian import CentralisedJacobian, ManipulatorJacobian
 
 class InverseDifferentialKinematics(Node):
     """
@@ -19,13 +19,14 @@ class InverseDifferentialKinematics(Node):
 
         # Parameters
         self.declare_parameter('frequency', 10.)
+        self.declare_parameter('mode', 'dry') # Set mode to 'dry' or 'flight' to use manipulator/centralised jacobian
 
         # Data
         self.state_body_angles_ = np.array([0., 0., 0.]) # YPR about z, y, x
         self.state_joint_positions_ = np.array([0., 0., 0.])
         self.state_body_angular_velocity_ = np.array([0., 0., 0.]) # YPR rates
         self.state_joint_velocity_ = np.array([0., 0., 0.])
-        self.virtual_end_effector_velocity_ = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, virtual velocity driving end-effector to reference pose
+        #self.virtual_end_effector_velocity_ = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, virtual velocity driving end-effector to reference pose
         self.virtual_end_effector_velocity_inertial = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, virtual velocity driving end-effector to reference pose in inertial frame
         self.forward_kinematics = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, forward kinematics of the system
         # Subscribers
@@ -66,9 +67,41 @@ class InverseDifferentialKinematics(Node):
             10)
 
         self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().integer_value) # seconds
-        self.timer = self.create_timer(self.period, self.timer_callback)
-     
-    def timer_callback(self):
+        if self.get_parameter('mode').get_parameter_value().string_value == 'dry':
+            self.jacobian = ManipulatorJacobian()
+            self.timer = self.create_timer(self.period, self.timer_callback_dry)
+        elif self.get_parameter('mode').get_parameter_value().string_value == 'flight':
+            self.jacobian = CentralisedJacobian()
+            self.timer = self.create_timer(self.period, self.timer_callback_flight)
+        else:
+            raise ValueError('Invalid mode parameter. Set mode to "dry" or "flight')
+    
+    def timer_callback_dry(self):
+        # Set the state
+        self.state = {
+            'q1': self.state_joint_positions_[0],
+            'q2': self.state_joint_positions_[1],
+            'q3': self.state_joint_positions_[2],
+        }
+        self.jacobian.set_state(self.state)
+        J_pinv = self.jacobian.evaluate_pseudoinverse_jacobian()
+        ref_state_velocities = J_pinv @ self.virtual_end_effector_velocity_inertial
+
+        # Create messages
+        reference_body_rates = TwistStamped()
+        reference_body_rates.twist.linear.x = 0.0
+        reference_body_rates.twist.linear.y = 0.0
+        reference_body_rates.twist.linear.z = 0.0
+        reference_body_rates.twist.angular.z = 0.0
+        reference_body_rates.twist.angular.y = 0.0
+        reference_body_rates.twist.angular.x = 0.0
+        reference_joint_velocity = Vector3Stamped()
+        reference_joint_velocity.vector.x = ref_state_velocities[0]
+        reference_joint_velocity.vector.y = ref_state_velocities[1]
+        reference_joint_velocity.vector.z = ref_state_velocities[2]
+
+
+    def timer_callback_flight(self):
         # Set the state
         self.state = {
             'yaw': self.state_body_angles_[0],
@@ -152,14 +185,15 @@ class InverseDifferentialKinematics(Node):
         self.state_joint_velocity_[2] = msg.vector.z # q3
     
     def reference_ee_velocity_callback(self, msg):
-        self.virtual_end_effector_velocity_[0] = msg.twist.linear.x # Body x
-        self.virtual_end_effector_velocity_[1] = msg.twist.linear.y # Body y
-        self.virtual_end_effector_velocity_[2] = msg.twist.linear.z # Body z
-        self.virtual_end_effector_velocity_[3] = msg.twist.angular.z # Yaw
-        self.virtual_end_effector_velocity_[4] = msg.twist.angular.y # Pitch
-        self.virtual_end_effector_velocity_[5] = msg.twist.angular.x # Roll
+        virtual_end_effector_velocity_ = np.zeros(6)
+        virtual_end_effector_velocity_[0] = msg.twist.linear.x # Body x
+        virtual_end_effector_velocity_[1] = msg.twist.linear.y # Body y
+        virtual_end_effector_velocity_[2] = msg.twist.linear.z # Body z
+        virtual_end_effector_velocity_[3] = msg.twist.angular.z # Yaw
+        virtual_end_effector_velocity_[4] = msg.twist.angular.y # Pitch
+        virtual_end_effector_velocity_[5] = msg.twist.angular.x # Roll
 
-        self.virtual_end_effector_velocity_inertial = self.rotate_to_world_frame(self.virtual_end_effector_velocity_)
+        self.virtual_end_effector_velocity_inertial = self.rotate_to_world_frame(virtual_end_effector_velocity_)
     
 def main(args=None):
     rclpy.init(args=args)

@@ -19,7 +19,13 @@ class ATSVelocityController(Node):
         self.declare_parameter('ki', 0.0) # Integral gain
         self.declare_parameter('kd', 0.0) # Derivative gain
         self.declare_parameter('max_integral', 1.0) # Integrator saturation limit
-        self.declare_parameter('ewma_alpha', 0.3) # Exponential moving average alpha for derivatieve smoothing
+        self.declare_parameter('ewma_alpha', 0.3) # Exponential moving average alpha for derivative smoothing
+
+        self.gain_proportional = self.get_parameter('kp').get_parameter_value().double_value
+        self.gain_integral = self.get_parameter('ki').get_parameter_value().double_value
+        self.gain_derivative = self.get_parameter('kd').get_parameter_value().double_value
+        self.max_integral = self.get_parameter('max_integral').get_parameter_value().double_value
+        self.ewma_alpha = self.get_parameter('ewma_alpha').get_parameter_value().double_value
 
         # Initialization log message
         self.get_logger().info("Velocity controller node initialized")
@@ -51,46 +57,41 @@ class ATSVelocityController(Node):
         error = self.reference_pose_ - self.tactip_pose_
 
         # integral with saturation
-        max_integral = self.get_parameter('max_integral').get_parameter_value().double_value
-        integral_gain = self.get_parameter('ki').get_parameter_value().double_value
-        self.integral = np.clip(self.integral + integral_gain*error*self.period, -max_integral, max_integral)
+        self.integral = np.clip(self.integral + self.integral_gain*error*self.period, -self.max_integral, self.max_integral)
 
         # Derivative term with EWMA smoothing
-        ewma_alpha = self.get_parameter('ewma_alpha').get_parameter_value().double_value
-        derivative_gain = self.get_parameter('kd').get_parameter_value().double_value
-        self.derivative = derivative_gain * (ewma_alpha*error + (1-ewma_alpha)*self.previous_error)
+        self.derivative = self.derivative_gain * (self.ewma_alpha*error + (1-self.ewma_alpha)*self.previous_error)
         self.previous_error = error
 
         # Compute the control signal (end-effector velocity)
-        proportional_gain = self.get_parameter('kp').get_parameter_value().double_value
-        control_signal = proportional_gain*error + self.integral + self.derivative
+        control_signal = self.proportional_gain*error + self.integral + self.derivative
 
         # Construct the message
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.twist.linear.x = control_signal[0]
-        msg.twist.linear.y = control_signal[1]
-        msg.twist.linear.z = control_signal[2]
-        msg.twist.angular.x = control_signal[3]
-        msg.twist.angular.y = control_signal[4]
-        msg.twist.angular.z = control_signal[5]
+        msg.twist.linear.x = control_signal[0] # [m/s] end effector x velocity in contact frame
+        msg.twist.linear.y = control_signal[1] # [m/s] end effector y velocity in contact frame
+        msg.twist.linear.z = control_signal[2] # [m/s] end effector z velocity in contact frame
+        msg.twist.angular.z = control_signal[3] # [rad/s] end effector yaw rate in contact frame
+        msg.twist.angular.y = control_signal[4] # [rad/s] end effector pitch rate in contact frame
+        msg.twist.angular.x = control_signal[5] # [rad/s] end effector roll rate in contact frame
         self.ee_reference_velocity_subscriber_.publish(msg)
 
     def ee_measured_pose_callback(self, msg):
-        self.tactip_pose_[0]=msg.twist.linear.x # end effector measured x in contact frame (6d)
-        self.tactip_pose_[1]=msg.twist.linear.y # end effector measured y in contact frame (6d)
-        self.tactip_pose_[2]=msg.twist.linear.z # end effector measured z in contact frame (3d)
-        self.tactip_pose_[3]=msg.twist.angular.z # end effector measured yaw in contact frame (6d) TODO: UNITS?
-        self.tactip_pose_[4]=msg.twist.angular.y # end effector measured pitch in contact frame (3d)
-        self.tactip_pose_[5]=msg.twist.angular.x # end effector measured roll in contact frame (3d)
+        self.tactip_pose_[0]=msg.twist.linear.x # [m] end effector measured x in contact frame (6d)
+        self.tactip_pose_[1]=msg.twist.linear.y # [m] end effector measured y in contact frame (6d)
+        self.tactip_pose_[2]=msg.twist.linear.z # [m] end effector measured z in contact frame (3d)
+        self.tactip_pose_[3]=msg.twist.angular.z # [rad] end effector measured yaw in contact frame (6d)
+        self.tactip_pose_[4]=msg.twist.angular.y # [rad] end effector measured pitch in contact frame (3d)
+        self.tactip_pose_[5]=msg.twist.angular.x # [rad] end effector measured roll in contact frame (3d)
 
     def ee_reference_pose_callback(self, msg):
-        self.reference_pose_[0]=msg.twist.linear.x # end effector x ref in contact frame (6d)
-        self.reference_pose_[1]=msg.twist.linear.y # end effector y ref in contact frame (6d)
-        self.reference_pose_[2]=msg.twist.linear.z # end effector z ref in contact frame (3d)
-        self.reference_pose_[3]=msg.twist.angular.z # end effector yaw ref in contact frame (6d) TODO: UNITS?
-        self.reference_pose_[4]=msg.twist.angular.y # end effector pitch ref in contact frame (3d)
-        self.reference_pose_[5]=msg.twist.angular.x # end effector roll ref in contact frame (3d)
+        self.reference_pose_[0]=msg.twist.linear.x # [m] end effector x ref in contact frame (6d) m
+        self.reference_pose_[1]=msg.twist.linear.y # [m] end effector y ref in contact frame (6d) m
+        self.reference_pose_[2]=msg.twist.linear.z # [m] end effector z ref in contact frame (3d) m
+        self.reference_pose_[3]=msg.twist.angular.z # [rad] end effector yaw ref in contact frame (6d) rad
+        self.reference_pose_[4]=msg.twist.angular.y # [rad] end effector pitch ref in contact frame (3d) rad
+        self.reference_pose_[5]=msg.twist.angular.x # [rad] end effector roll ref in contact frame (3d) rad
 
 def main(args=None):
     rclpy.init(args=args)

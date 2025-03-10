@@ -148,19 +148,7 @@ class CentralisedJacobian():
         """
         return self.R_Ie_func(*self.state)
     
-    def update_state(self, values):
-        """
-        Update the state variables with a list or NumPy array of states.
 
-        Parameters:
-        - values: List or NumPy array of states (length 6).
-
-        Returns:
-        - None
-        """
-        if len(values) != 6:
-            raise ValueError("Input must be a list or array of exactly six numbers [yaw, pitch, roll, q1, q2, q3] in radians.")
-        self.state = values
 
 class ManipulatorJacobian:
     q_1, q_2, q_3 = symbols('q_1 q_2 q_3')
@@ -182,8 +170,13 @@ class ManipulatorJacobian:
     jacobian[5,0]=(sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*(-sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3))/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2) + (-sin(q_1)*cos(q_3) - sin(q_3)*cos(q_1)*cos(q_2))*(sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1))/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2)
     jacobian[5,1]=-(sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*sin(q_2)*sin(q_3)*cos(q_1)/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2) + (-sin(q_1)*cos(q_3) - sin(q_3)*cos(q_1)*cos(q_2))*sin(q_2)*cos(q_1)*cos(q_3)/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2)
     jacobian[5,2]=(-sin(q_1)*sin(q_3) + cos(q_1)*cos(q_2)*cos(q_3))*(sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2) + (-sin(q_1)*cos(q_3) - sin(q_3)*cos(q_1)*cos(q_2))*(sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))/((sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))**2 + (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))**2)
+    
+    R_be = Matrix([[-cos(q_2), sin(q_2)*sin(q_3), -sin(q_2)*cos(q_3)], [-sin(q_1)*sin(q_2), -sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3), sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1)], [sin(q_2)*cos(q_1), sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2), sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3)]])
+    
     def __init__(self):
         self.jfunc = lambdify((self.q_1, self.q_2, self.q_3), self.jacobian, modules='numpy')
+
+        self.R_be_func = lambdify((self.q_1, self.q_2, self.q_3), self.R_be, modules='numpy')
 
         self.state = [0., 0., 0.]
 
@@ -205,19 +198,29 @@ class ManipulatorJacobian:
         - The evaluated result as a NumPy array.
         """
         J = self.evaluate_jacobian(self.state)
-        J_pinv = np.matmul(J.transpose(),np.linalg.inv(np.matmul(J,J.transpose())))
+        J_pinv = np.linalg.pinv(J)
         return J_pinv
-
-    def update_state(self, values):
+    
+    def evaluate_rotation_matrix(self):
         """
-        Update the state variables with a list or NumPy array of states.
+        Evaluate the rotation matrix between the base and end-effector frame with a list or NumPy array of states.
 
         Parameters:
         - values: List or NumPy array of states (length 3).
 
         Returns:
-        - None
+        - The evaluated result as a NumPy array.
         """
-        if len(values) != 3:
-            raise ValueError("Input must be a list or array of exactly three numbers [q1, q2, q3] in radians.")
-        self.state = values
+        return self.R_be_func(*self.state)
+
+    def set_state(self, new_state : dict):
+        """
+        Set the state variables with a dictof states.
+
+        Parameters:
+        - new_state: Dict of states.
+
+        """
+        self.state[0] = new_state['q1']
+        self.state[1] = new_state['q2']
+        self.state[2] = new_state['q3']

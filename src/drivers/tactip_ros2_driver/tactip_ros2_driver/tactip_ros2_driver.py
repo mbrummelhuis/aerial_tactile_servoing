@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from math import pi
 import time
 
 from geometry_msgs.msg import TwistStamped
@@ -40,14 +41,15 @@ class TactipDriver(Node):
         #self.get_logger().info(f"TacTip data: {data}")
 
         # publish the data
+        # The model outputs are in mm and deg, so convert to SI
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.twist.linear.x = data[0]
-        msg.twist.linear.y = data[1]
-        msg.twist.linear.z = data[2]
-        msg.twist.angular.x = data[3]
-        msg.twist.angular.y = data[4]
-        msg.twist.angular.z = data[5]
+        msg.twist.linear.x = data[0]*1000.
+        msg.twist.linear.y = data[1]*1000.
+        msg.twist.linear.z = data[2]*1000.
+        msg.twist.angular.x = data[3]*2.*pi/360.
+        msg.twist.angular.y = data[4]*2.*pi/360.
+        msg.twist.angular.z = data[5]*2.*pi/360.
         self.publisher_.publish(msg)
 
     def test_model_execution_time(self, iterations = 1000):
