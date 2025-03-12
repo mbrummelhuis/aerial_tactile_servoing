@@ -21,6 +21,7 @@ PX4ROS2Driver::PX4ROS2Driver() :
         auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);
 
         // Subscriptions
+        
         vehicle_status_subscription_ = this->create_subscription<VehicleStatus>("fmu/out/vehicle_status", qos, std::bind(&PX4ROS2Driver::vehicleStatusCallback, this, std::placeholders::_1));
         vehicle_body_rates_reference_subscription_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/references/body_velocities", qos, std::bind(&PX4ROS2Driver::vehicleBodyRatesReferenceCallback, this, std::placeholders::_1));
 

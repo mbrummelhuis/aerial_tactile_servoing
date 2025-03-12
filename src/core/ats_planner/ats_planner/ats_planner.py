@@ -35,7 +35,7 @@ class ATSPlanner(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.twist.linear.x = 0.0 # end effector x ref in contact frame (6d)
         msg.twist.linear.y = 0.0 # end effector y ref in contact frame (6d)
-        msg.twist.linear.z = -1.0 # end effector z ref in contact frame (3d)
+        msg.twist.linear.z = -1.5 # end effector z ref in contact frame (3d)
         msg.twist.angular.z = 0.0 # end effector yaw ref in contact frame (6d) TODO: UNITS?
         msg.twist.angular.y = 0.0 # end effector pitch ref in contact frame (3d)
         msg.twist.angular.x = 0.0 # end effector roll ref in contact frame (3d)

@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'mission_director_py = mission_director_py.mission_director_py:main',
+            'esa_demo_md = mission_director_py.mission_director_py:main',
+            'dry_ats_md = mission_director_py.dry_ats_mission_director_py:main',
         ],
     },
 )

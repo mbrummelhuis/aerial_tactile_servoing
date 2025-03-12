@@ -5,6 +5,10 @@ import numpy as np
 from geometry_msgs.msg import Vector3Stamped
 from geometry_msgs.msg import TwistStamped
 
+from sensor_msgs.msg import JointState
+
+from std_srvs.srv import SetBool
+
 from jacobian import CentralisedJacobian, ManipulatorJacobian
 
 class InverseDifferentialKinematics(Node):
@@ -30,21 +34,25 @@ class InverseDifferentialKinematics(Node):
         self.virtual_end_effector_velocity_inertial = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, virtual velocity driving end-effector to reference pose in inertial frame
         self.forward_kinematics = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, forward kinematics of the system
         # Subscribers
-        self.state_position_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/state/body_angles',
-            self.state_body_angles_callback,
-            10)
+        # Create subscriptions related to flight
+        if self.get_parameter('mode').get_parameter_value().string_value == 'flight':
+            self.state_position_subscription = self.create_subscription(
+                Vector3Stamped,
+                '/state/body_angles',
+                self.state_body_angles_callback,
+                10)
+            self.state_linear_velocity_subscription = self.create_subscription(
+                Vector3Stamped,
+                '/state/body_velocity',
+                self.state_body_velocity_callback,
+                10)
+        # Create subscriptions related to manipulator
         self.state_joint_positions_subscription = self.create_subscription(
             Vector3Stamped,
             '/state/joint_positions',
             self.state_joint_position_callback,
             10)
-        self.state_linear_velocity_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/state/body_velocity',
-            self.state_body_velocity_callback,
-            10)
+
         self.state_joint_velocity_subscription = self.create_subscription(
             Vector3Stamped,
             '/state/joint_velocities',
@@ -57,10 +65,11 @@ class InverseDifferentialKinematics(Node):
             10)
 
         # Publishers
-        self.reference_linear_velocity_publisher = self.create_publisher(
-            TwistStamped,
-            '/references/body_velocities',
-            10)
+        if self.get_parameter('mode').get_parameter_value().string_value == 'flight':
+            self.reference_linear_velocity_publisher = self.create_publisher(
+                TwistStamped,
+                '/references/body_velocities',
+                10)
         self.reference_joint_velocity_publisher = self.create_publisher(
             Vector3Stamped,
             '/references/joint_velocities',
@@ -75,33 +84,37 @@ class InverseDifferentialKinematics(Node):
             self.timer = self.create_timer(self.period, self.timer_callback_flight)
         else:
             raise ValueError('Invalid mode parameter. Set mode to "dry" or "flight')
+        
+        # Activation mechanism
+        self.activation_srv = self.create_service(SetBool, 'activate', self.activate_callback)
+        self.is_active = False
     
     def timer_callback_dry(self):
-        # Set the state
-        self.state = {
-            'q1': self.state_joint_positions_[0],
-            'q2': self.state_joint_positions_[1],
-            'q3': self.state_joint_positions_[2],
-        }
-        self.jacobian.set_state(self.state)
-        J_pinv = self.jacobian.evaluate_pseudoinverse_jacobian()
-        ref_state_velocities = J_pinv @ self.virtual_end_effector_velocity_inertial
+        if self.is_active:
+            # Set the state
+            self.state = {
+                'q1': self.state_joint_positions_[0],
+                'q2': self.state_joint_positions_[1],
+                'q3': self.state_joint_positions_[2],
+            }
+            self.jacobian.set_state(self.state)
+            J_pinv = self.jacobian.evaluate_pseudoinverse_jacobian()
+            ref_state_velocities = J_pinv @ self.virtual_end_effector_velocity_inertial
 
-        # Create messages
-        reference_body_rates = TwistStamped()
-        reference_body_rates.twist.linear.x = 0.0
-        reference_body_rates.twist.linear.y = 0.0
-        reference_body_rates.twist.linear.z = 0.0
-        reference_body_rates.twist.angular.z = 0.0
-        reference_body_rates.twist.angular.y = 0.0
-        reference_body_rates.twist.angular.x = 0.0
-        reference_joint_velocity = Vector3Stamped()
-        reference_joint_velocity.vector.x = ref_state_velocities[0]
-        reference_joint_velocity.vector.y = ref_state_velocities[1]
-        reference_joint_velocity.vector.z = ref_state_velocities[2]
+            # Create message
+            reference_joint_velocity = JointState()
+            reference_joint_velocity.name = ['q1', 'q2', 'q3']
+            reference_joint_velocity.position = [0.0, 0.0, 0.0]
+            reference_joint_velocity.velocity = [ref_state_velocities[0], ref_state_velocities[1], ref_state_velocities[2]]
+            reference_joint_velocity.effort = [0.0, 0.0, 0.0]
 
+            # Get timestamp
+            reference_joint_velocity.header.stamp = self.get_clock().now().to_msg()
 
-    def timer_callback_flight(self):
+            # Publish the references
+            self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
+
+    def timer_callback_flight(self): # TODO finish implementation
         # Set the state
         self.state = {
             'yaw': self.state_body_angles_[0],
@@ -140,6 +153,13 @@ class InverseDifferentialKinematics(Node):
         # Publish the references
         self.reference_linear_velocity_publisher.publish(reference_body_rates)
         self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
+        
+    def activate_callback(self, request, response):
+        self.active = request.data
+        response.success = True
+        response.message = f"Publisher {'activated' if self.active else 'deactivated'}"
+        self.get_logger().info(response.message)
+        return response
     
     def rotate_to_world_frame(self, vector):
         """
