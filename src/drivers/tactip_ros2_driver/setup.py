@@ -3,6 +3,8 @@ from glob import glob
 
 package_name = 'tactip_ros2_driver'
 
+model_name = 'simple_cnn_b2_1'
+
 setup(
     name=package_name,
     version='0.0.1',
@@ -10,7 +12,7 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/model/', glob('resource/models/**/*')),
+        ('share/' + package_name + '/model/', glob('resource/models/'+model_name+'/*')),
     ],
     install_requires=[
         'setuptools', 

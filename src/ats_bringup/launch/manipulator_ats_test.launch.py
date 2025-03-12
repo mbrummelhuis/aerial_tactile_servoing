@@ -63,36 +63,37 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'info']
     )
 
-    tactip_driver = Node(
-        package='tactip_ros2_driver',
-        executable='tactip_ros2_driver',
-        name='tactip_driver',
-        output='screen',
-        parameters=[
-            {'source': 4},
-            {'frequency': 10},
-            {'test_model_time': False}
-        ],
-        arguments=['--ros-args', '--log-level', 'info']
-    )
+    if False:
+        tactip_driver = Node(
+            package='tactip_ros2_driver',
+            executable='tactip_ros2_driver',
+            name='tactip_driver',
+            output='screen',
+            parameters=[
+                {'source': 4},
+                {'frequency': 10},
+                {'test_model_time': False}
+            ],
+            arguments=['--ros-args', '--log-level', 'info']
+        )
 
-    servo_driver = Node(
-        package="feetech_ros2_driver",
-        executable="feetech_ros2_driver",
-        name="feetech_driver",
-        output="screen",
-        parameters=[
-            {"frequency": 10},
+        servo_driver = Node(
+            package="feetech_ros2_driver",
+            executable="feetech_ros2_driver",
+            name="feetech_driver",
+            output="screen",
+            parameters=[
+                {"frequency": 10},
 
-        ],
-        arguments=["--ros-args", "--log-level", "info"]
-    )
+            ],
+            arguments=["--ros-args", "--log-level", "info"]
+        )
+        ld.add_action(tactip_driver)
+        ld.add_action(servo_driver)
 
     ld.add_action(mission_director)
     ld.add_action(ats_planner)
     ld.add_action(ats_velocity_controller)
     ld.add_action(inverse_dif_kinematics)
-    ld.add_action(tactip_driver)
-    ld.add_action(servo_driver)
     
     return ld
