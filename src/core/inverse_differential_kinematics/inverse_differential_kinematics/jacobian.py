@@ -120,7 +120,7 @@ class CentralisedJacobian():
         Returns:
         - The evaluated result as a NumPy array.
         """
-        J = self.evaluate_controlled_jacobian(self.state)
+        J = self.evaluate_controlled_jacobian()
         J_pinv = np.matmul(J.transpose(),np.linalg.inv(np.matmul(J,J.transpose())))
         return J_pinv
     

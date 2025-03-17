@@ -1,2 +1,3 @@
 source /opt/ros/humble/setup.bash # Source ROS2
 source /usr/share/colcon_argcomplete/hook/colcon-argcomplete.bash # Source colcon argument completion
+export ROS_DOMAIN_ID=75

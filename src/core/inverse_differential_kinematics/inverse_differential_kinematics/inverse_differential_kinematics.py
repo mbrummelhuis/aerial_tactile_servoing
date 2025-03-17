@@ -52,7 +52,6 @@ class InverseDifferentialKinematics(Node):
             '/state/joint_positions',
             self.state_joint_position_callback,
             10)
-
         self.state_joint_velocity_subscription = self.create_subscription(
             Vector3Stamped,
             '/state/joint_velocities',
@@ -129,8 +128,10 @@ class InverseDifferentialKinematics(Node):
         # CLIK law
         J_con_pinv = self.jacobian.evaluate_pseudoinverse_controlled_jacobian()
         J_uncontrolled = self.jacobian.evaluate_uncontrolled_jacobian()
-        ref_state_velocities = J_con_pinv * self.virtual_end_effector_velocity_inertial - \
-            J_con_pinv*J_uncontrolled*self.state_body_velocity_[0:2] # XY velocities are uncontrolled
+        ref_state_velocities = J_con_pinv @ self.virtual_end_effector_velocity_inertial #- \
+        #    J_con_pinv @ J_uncontrolled @ self.state_body_velocity_[0:2] # XY velocities are uncontrolled
+        # TODO: Add the uncontrolled velocities to the reference velocities --> Requires XY velocity estimate
+        # I.e. current implementation assumes xdot and ydot to be zero.
         
         # Create messages
         reference_body_rates = TwistStamped()
@@ -141,9 +142,9 @@ class InverseDifferentialKinematics(Node):
         reference_body_rates.twist.angular.y = ref_state_velocities[2] # Pitch rate
         reference_body_rates.twist.angular.x = ref_state_velocities[3] # Roll rate
         reference_joint_velocity = Vector3Stamped()
-        reference_joint_velocity.vector.x = ref_state_velocities[6]
-        reference_joint_velocity.vector.y = ref_state_velocities[7]
-        reference_joint_velocity.vector.z = ref_state_velocities[8]
+        reference_joint_velocity.vector.x = ref_state_velocities[4] # q1 velocity
+        reference_joint_velocity.vector.y = ref_state_velocities[5] # q2 velocity
+        reference_joint_velocity.vector.z = ref_state_velocities[6] # q3 velocity
 
         # Get timestamp
         timestamp = self.get_clock().now().to_msg()

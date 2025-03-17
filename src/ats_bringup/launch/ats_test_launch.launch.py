@@ -28,9 +28,9 @@ def generate_launch_description():
         parameters=[
             {'frequency': 15.},
             {'kp': 1.0},
-            {'ki': 0.0},
+            {'ki': 0.01},
             {'kd': 0.0},
-            {'max_integral': 1.0},
+            {'max_integral': 1.5},
             {'ewma_alpha': 0.3}
         ],
         arguments=['--ros-args', '--log-level', 'info']
