@@ -8,6 +8,7 @@
   <license>GPL-3.0-only</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rcl_interfaces</depend>
 
   <!-- Packages called in launch files -->
   <!-- exec_depend>mission_director</exec_depend-->

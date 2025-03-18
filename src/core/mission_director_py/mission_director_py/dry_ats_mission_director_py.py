@@ -168,7 +168,7 @@ class MissionDirectorPy(Node):
 
         self.publisher_arm.publish(msg)
 
-    def publish_arm_position_commands(self, q1, q2, q3):
+    def publish_arm_velocity_commands(self, q1, q2, q3):
         self.get_logger().debug(f'Publishing velocity references: ({q1}, {q2}, {q3})')
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()

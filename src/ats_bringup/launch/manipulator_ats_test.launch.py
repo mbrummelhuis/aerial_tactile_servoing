@@ -83,7 +83,7 @@ def generate_launch_description():
         servo_driver = Node(
             package="feetech_ros2",
             executable="feetech_ros2_interface",
-            name="feetech_driver",
+            name="feetech_ros2_interface",
             output="screen",
             parameters=[param_file],
             arguments=["--ros-args", "--log-level", "info"]

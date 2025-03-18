@@ -1,4 +1,4 @@
-feetech_ros2_interface:
+/feetech_ros2_interface:
   ros__parameters:
     node:
       frequency: 10.0
