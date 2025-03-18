@@ -57,25 +57,15 @@ class ATSVelocityController(Node):
         error = self.reference_pose_ - self.tactip_pose_
 
         # integral with saturation
-<<<<<<< Updated upstream
-        self.integral = np.clip(self.integral + self.integral_gain*error*self.period, -self.max_integral, self.max_integral)
-=======
-        max_integral = self.get_parameter('max_integral').get_parameter_value().double_value
-        integral_gain = self.get_parameter('ki').get_parameter_value().double_value
-        self.integral = np.clip(self.integral + integral_gain*error*self.period, -max_integral, max_integral)
-        # logging
-        self.get_logger().debug("Error: {}".format(error))
-        
-        self.get_logger().debug("Integral: {}".format(self.integral))
->>>>>>> Stashed changes
+        self.integral = np.clip(self.integral + self.gain_integral*error*self.period, -self.max_integral, self.max_integral)
 
         # Derivative term with EWMA smoothing
-        self.derivative = self.derivative_gain * (self.ewma_alpha*error + (1-self.ewma_alpha)*self.previous_error)
+        self.derivative = self.gain_derivative * (self.ewma_alpha*error + (1-self.ewma_alpha)*self.previous_error)
         self.previous_error = error
         self.get_logger().debug("Derivative: {}".format(self.derivative))
 
         # Compute the control signal (end-effector velocity)
-        control_signal = self.proportional_gain*error + self.integral + self.derivative
+        control_signal = self.gain_proportional*error + self.integral + self.derivative
 
         # Construct the message
         msg = TwistStamped()

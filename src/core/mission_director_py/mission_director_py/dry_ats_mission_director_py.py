@@ -12,6 +12,8 @@ from sensor_msgs.msg import JointState
 
 from std_srvs.srv import SetBool
 
+from feetech_ros2.srv import SetMode
+
 from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import VehicleLocalPosition
 from px4_msgs.msg import TrajectorySetpoint
@@ -22,6 +24,9 @@ class MissionDirectorPy(Node):
 
     def __init__(self):
         super().__init__('mission_director_py')
+
+        # Parameters
+        self.declare_parameter('frequency', 10.)
 
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -52,30 +57,37 @@ class MissionDirectorPy(Node):
         
 
         # Arms publishers
-        self.publisher_arm = self.create_publisher(JointState, '/servo/in/reference_position', 10)
-        self.declare_parameter('initial_joint_states', {0.0, 0.0, 0.0})
+        self.publisher_arm = self.create_publisher(JointState, '/servo/in/references/joint_velocities', 10)
+        self.declare_parameter('initial_joint_states', [0.0, 0.0, 0.0])
 
         # State transition times
         self.declare_parameter('entrypoint_time', 5.0)
         self.declare_parameter('position_arm_time', 5.0)
         self.declare_parameter('tactile_servoing_time', 5.0)
 
-        # Timer
-        self.declare_parameter('frequency', 10.)
-        self.timer_period = 1.0 / self.get_parameter('frequency').get_parameter_value().double_value
-        self.timer = self.create_timer(self.timer_period, self.timer_callback)
+        # IK activation server
+        self.ik_client = self.create_client(SetBool, 'activate_inverse_kinematics')
+        self.ik_req = SetBool.Request()
 
-        # Activation server
-        self.cli = self.create_client(SetBool, 'activate_inverse_kinematics')
-        while not self.cli.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('service not available, waiting again...')
-        self.req = SetBool.Request()
+        # Set mode server
+        self.mode_client = self.create_client(SetMode, 'set_servo_mode')
+        self.mode_req = SetMode.Request()
+
+        while not self.ik_client.wait_for_service(timeout_sec=1.0): # and not self.mode_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('services not available, waiting again...')
+        
+        # Set driver to position mode
+        #self.request_set_mode(4) # 4 is continuous position mode
 
         # set initial state
         self.FSM_state = 'entrypoint'
         self.input_state = 0
         self.first_state_loop = True
         self.state_start_time = datetime.datetime.now()
+
+        # Timer -- always last
+        self.timer_period = 1.0 / self.get_parameter('frequency').get_parameter_value().double_value
+        self.timer = self.create_timer(self.timer_period, self.timer_callback)
 
     def timer_callback(self):
         match self.FSM_state:
@@ -84,10 +96,14 @@ class MissionDirectorPy(Node):
                     self.get_logger().info('Starting FSM')
                     self.first_state_loop = False
 
+                    # Set driver to position mode (0)
+                    #self.request_set_mode(0)
+
+
                 # TODO How to know when servo driver is ready? Now we just wait
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('entrypoint_time').get_parameter_value().double_value):
-                    self.get_logger().info(f"Waited for 5 seconds -- switching to disarmed")
+                    self.get_logger().info(f"Waited for 5 seconds -- switching to arm positioning")
                     self.FSM_state = 'position_arm'
                     self.state_start_time = datetime.datetime.now() # Reset state start time
                     self.first_state_loop = True # Reset first state loop flag
@@ -109,11 +125,14 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('Waiting for contact')
                     self.first_state_loop = False
-                
+
+                self.get_logger().info(f'Tactip depth: {self.tactip_data.twist.linear.z*1000}')
                 # Transition
                 # If contact depth is greater than 1.0 mm, we assume contact.
-                if (self.tactip_data.twist.linear.z)*1000<-1.0 and self.activate_ik() is not None:
-                    self.get_logger().info('Contact detected and IK activated -- switching to tactile servoing')
+                if (self.tactip_data.twist.linear.z)*1000>2.0:# and self.request_set_mode(1) is not None:
+                    self.get_logger().info(f"Contact detected -- activating IK")
+                    self.activate_ik()
+                    self.get_logger().info('Contact detected, IK activated, servo velocity mode set -- switching to tactile servoing')
                     self.FSM_state = 'tactile_servoing'
                     self.state_start_time = datetime.datetime.now()
                     self.first_state_loop = True # Reset first state loop flag
@@ -124,7 +143,8 @@ class MissionDirectorPy(Node):
                     self.first_state_loop = False
 
                 # Transition    
-                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('tactile_servoing_time').get_parameter_value().double_value) and self.deactivate_ik() is not None:
+                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('tactile_servoing_time').get_parameter_value().double_value):
+                    self.deactivate_ik()
                     self.get_logger().info(f"Waited for 5 seconds and IK deactivated -- switching to end")
                     self.FSM_state = 'end'
                     self.state_start_time = datetime.datetime.now()
@@ -152,28 +172,46 @@ class MissionDirectorPy(Node):
         self.input_state = msg.data
 
     def tactip_callback(self, msg):
-        self.get_logger().info(f'Tactip data: {msg}')
+        #self.get_logger().debug(f'Tactip data: {msg}')
         self.tactip_data = msg
 
     def activate_ik(self):
-        self.req.data = True
-        self.future = self.cli.call_async(self.req)
-        rclpy.spin_until_future_complete(self, self.future)
-        if self.future.result() is not None:
-            self.get_logger().info('Service call success')
-        else:
-            self.get_logger().info('Service call failed')
-        return self.future.result()
-        
+        self.ik_req.data = True
+        self.future = self.ik_client.call_async(self.ik_req)
+        self.future.add_done_callback(self.activate_ik_callback)
+
+        self.get_logger().info('Waiting for IK service call to complete')
+
+    def activate_ik_callback(self, future):
+        try:
+            response = future.result()
+            self.get_logger().info('Service call completed')
+        except Exception as e:
+            self.get_logger().info(f'Service call failed {e}')
+
     def deactivate_ik(self):
-        self.req.data = False
-        self.future = self.cli.call_async(self.req)
-        rclpy.spin_until_future_complete(self, self.future)
-        if self.future.result() is not None:
-            self.get_logger().info('Service call success')
-        else:
-            self.get_logger().info('Service call failed')
-        return self.future.result()
+        self.ik_req.data = False
+        self.future = self.ik_client.call_async(self.ik_req)
+        self.future.add_done_callback(self.activate_ik_callback)
+
+        self.get_logger().info('Waiting for IK service call to complete')
+
+    '''
+    Request to set the servo driver mode. Mode 0 is default position mode, mode 1 is velocity mode, mode 4 is continuous position mode.
+    '''
+    def request_set_mode(self, mode):
+        self.mode_req.operating_mode = mode
+        self.future = self.mode_client.call_async(self.mode_req)
+        self.future.add_done_callback(self.set_mode_callback)
+
+        self.get_logger().info('Waiting for set mode service call to complete')
+
+    def set_mode_callback(self, future):
+        try:
+            response = future.result()
+            self.get_logger().info('Service call completed')
+        except Exception as e:
+            self.get_logger().info(f'Service call failed {e}')
 
 def main():
     rclpy.init(args=None)

@@ -19,14 +19,15 @@ RUN apt-get update && apt-get install -y \
     git \
     nano \
     terminator \
+    libboost-all-dev \
     python3-pip \
     python3-rosdep \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GPIO C library
-RUN git clone https://github.com/orangepi-xunlong/wiringOP.git
-WORKDIR /wiringOP
-RUN ./build clean && ./build && echo "BOARD=orangepi5" | sudo tee /etc/orangepi-release
+# RUN git clone https://github.com/orangepi-xunlong/wiringOP.git
+# WORKDIR /wiringOP
+# RUN ./build clean && ./build && echo "BOARD=orangepi5" | sudo tee /etc/orangepi-release
 
 # Configure user
 # ARG USERNAME=ats-devcontainer

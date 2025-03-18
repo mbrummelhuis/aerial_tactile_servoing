@@ -15,7 +15,7 @@ class TactipDriver(Node):
 
         # Parameters
         self.declare_parameter('source', 4)
-        self.declare_parameter('frequency', 10)
+        self.declare_parameter('frequency', 10.)
         self.declare_parameter('test_model_time', False)
 
         self.get_logger().info("Tactip driver initialized")
@@ -27,7 +27,8 @@ class TactipDriver(Node):
         self.sensor = TacTip(self.get_parameter('source').get_parameter_value().integer_value)
         self.get_logger().info(f"Reading from /dev/video{self.get_parameter('source').get_parameter_value().integer_value}" )
 
-        self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().integer_value) # seconds
+        self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
+        self.period = 1.0/self.frequency # seconds
         if self.get_parameter('test_model_time').get_parameter_value().bool_value:
             self.get_logger().info("Testing model execution time")
             self.test_model_execution_time()
@@ -44,9 +45,9 @@ class TactipDriver(Node):
         # The model outputs are in mm and deg, so convert to SI
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.twist.linear.x = data[0]*1000.
-        msg.twist.linear.y = data[1]*1000.
-        msg.twist.linear.z = data[2]*1000.
+        msg.twist.linear.x = data[0]/1000.
+        msg.twist.linear.y = data[1]/1000.
+        msg.twist.linear.z = data[2]/1000.
         msg.twist.angular.x = data[3]*2.*pi/360.
         msg.twist.angular.y = data[4]*2.*pi/360.
         msg.twist.angular.z = data[5]*2.*pi/360.

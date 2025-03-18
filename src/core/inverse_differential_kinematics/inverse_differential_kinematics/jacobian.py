@@ -197,7 +197,7 @@ class ManipulatorJacobian:
         Returns:
         - The evaluated result as a NumPy array.
         """
-        J = self.evaluate_jacobian(self.state)
+        J = self.evaluate_jacobian()
         J_pinv = np.linalg.pinv(J)
         return J_pinv
     

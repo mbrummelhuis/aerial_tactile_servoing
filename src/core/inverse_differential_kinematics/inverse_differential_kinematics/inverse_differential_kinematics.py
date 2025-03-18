@@ -9,7 +9,7 @@ from sensor_msgs.msg import JointState
 
 from std_srvs.srv import SetBool
 
-from jacobian import CentralisedJacobian, ManipulatorJacobian
+from inverse_differential_kinematics.jacobian import CentralisedJacobian, ManipulatorJacobian
 
 class InverseDifferentialKinematics(Node):
     """
@@ -70,11 +70,12 @@ class InverseDifferentialKinematics(Node):
                 '/references/body_velocities',
                 10)
         self.reference_joint_velocity_publisher = self.create_publisher(
-            Vector3Stamped,
-            '/references/joint_velocities',
+            JointState,
+            '/servo/in/references/joint_velocities',
             10)
 
-        self.period = 1.0/float(self.get_parameter('frequency').get_parameter_value().integer_value) # seconds
+        self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
+        self.period = 1.0/self.frequency # seconds
         if self.get_parameter('mode').get_parameter_value().string_value == 'dry':
             self.jacobian = ManipulatorJacobian()
             self.timer = self.create_timer(self.period, self.timer_callback_dry)
@@ -85,7 +86,7 @@ class InverseDifferentialKinematics(Node):
             raise ValueError('Invalid mode parameter. Set mode to "dry" or "flight')
         
         # Activation mechanism
-        self.activation_srv = self.create_service(SetBool, 'activate', self.activate_callback)
+        self.activation_srv = self.create_service(SetBool, 'activate_inverse_kinematics', self.activate_callback)
         self.is_active = False
     
     def timer_callback_dry(self):
@@ -101,6 +102,7 @@ class InverseDifferentialKinematics(Node):
             ref_state_velocities = J_pinv @ self.virtual_end_effector_velocity_inertial
 
             # Create message
+            self.get_logger().info(f"Reference velocities: {ref_state_velocities}")
             reference_joint_velocity = JointState()
             reference_joint_velocity.name = ['q1', 'q2', 'q3']
             reference_joint_velocity.position = [0.0, 0.0, 0.0]
@@ -156,9 +158,9 @@ class InverseDifferentialKinematics(Node):
         self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
         
     def activate_callback(self, request, response):
-        self.active = request.data
+        self.is_active = request.data
         response.success = True
-        response.message = f"Publisher {'activated' if self.active else 'deactivated'}"
+        response.message = f"Inverse kinematics passthrough {'activated' if self.is_active else 'deactivated'}"
         self.get_logger().info(response.message)
         return response
     

@@ -1,6 +1,7 @@
+import os
 from launch import LaunchDescription
 from launch_ros.actions import Node
-
+from ament_index_python.packages import get_package_share_directory
 """
 Launch file for testing ATS controller with only manipulator
 
@@ -19,7 +20,7 @@ def generate_launch_description():
             {'initial_joint_states': [0.0, 0.0, 0.0]},
             {'entrypoint_time': 5.0},
             {'position_arm_time': 5.0},
-            {'tactile_servoing_time': 5.0},
+            {'tactile_servoing_time': 30.0},
             {'frequency': 15.}
         ],
         arguments=['--ros-args', '--log-level', 'info']
@@ -63,32 +64,31 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'info']
     )
 
-    if False:
+    if True:
         tactip_driver = Node(
             package='tactip_ros2_driver',
             executable='tactip_ros2_driver',
             name='tactip_driver',
             output='screen',
             parameters=[
-                {'source': 4},
-                {'frequency': 10},
+                {'source': 0},
+                {'frequency': 10.},
                 {'test_model_time': False}
             ],
             arguments=['--ros-args', '--log-level', 'info']
         )
-
+        ld.add_action(tactip_driver)
+    if False:
+        param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
         servo_driver = Node(
-            package="feetech_ros2_driver",
-            executable="feetech_ros2_driver",
+            package="feetech_ros2",
+            executable="feetech_ros2_interface",
             name="feetech_driver",
             output="screen",
-            parameters=[
-                {"frequency": 10},
-
-            ],
+            parameters=[param_file],
             arguments=["--ros-args", "--log-level", "info"]
         )
-        ld.add_action(tactip_driver)
+        
         ld.add_action(servo_driver)
 
     ld.add_action(mission_director)
