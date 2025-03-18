@@ -116,8 +116,8 @@ class MissionDirectorPy(Node):
 
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('position_arm_time').get_parameter_value().double_value):
-                    self.get_logger().info(f"Arm positioned -- switching to wait_for_contact")
-                    self.FSM_state = 'wait_for_contact'
+                    self.get_logger().info(f"Arm positioned -- switching to end")
+                    self.FSM_state = 'end'
                     self.state_start_time = datetime.datetime.now() # Reset state start time
                     self.first_state_loop = True # Reset first state loop flag
 
@@ -127,9 +127,10 @@ class MissionDirectorPy(Node):
                     self.first_state_loop = False
 
                 self.get_logger().info(f'Tactip depth: {self.tactip_data.twist.linear.z*1000}')
+                #self.get_logger().info(f'Tactip conditions: {self.tactip.data.twist.linear.z*1000 < -2.0}')
                 # Transition
                 # If contact depth is greater than 1.0 mm, we assume contact.
-                if (self.tactip_data.twist.linear.z)*1000>2.0:# and self.request_set_mode(1) is not None:
+                if (self.tactip_data.twist.linear.z)*1000 < -2.0:# and self.request_set_mode(1) is not None:
                     self.get_logger().info(f"Contact detected -- activating IK")
                     self.activate_ik()
                     self.get_logger().info('Contact detected, IK activated, servo velocity mode set -- switching to tactile servoing')
