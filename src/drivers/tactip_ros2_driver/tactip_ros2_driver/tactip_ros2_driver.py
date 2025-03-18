@@ -47,7 +47,7 @@ class TactipDriver(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.twist.linear.x = data[0]/1000.
         msg.twist.linear.y = data[1]/1000.
-        msg.twist.linear.z = data[2]/1000.
+        msg.twist.linear.z = data[2]/-1000. # Positive is deeper, but convention is positive is less contact
         msg.twist.angular.x = data[3]*2.*pi/360.
         msg.twist.angular.y = data[4]*2.*pi/360.
         msg.twist.angular.z = data[5]*2.*pi/360.

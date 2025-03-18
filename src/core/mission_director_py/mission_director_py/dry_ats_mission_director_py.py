@@ -57,7 +57,7 @@ class MissionDirectorPy(Node):
         
 
         # Arms publishers
-        self.publisher_arm = self.create_publisher(JointState, '/servo/in/references/joint_velocities', 10)
+        self.publisher_arm = self.create_publisher(JointState, '/servo/in/references/joint_references', 10)
         self.declare_parameter('initial_joint_states', [0.0, 0.0, 0.0])
 
         # State transition times
@@ -112,7 +112,7 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('Positioning arm')
                     self.first_state_loop = False
-                    self.publish_arm_commands(0.0, 0.0, 0.0)
+                    self.publish_arm_position_commands(0.0, 0.0, 0.0)
 
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('position_arm_time').get_parameter_value().double_value):
@@ -154,15 +154,26 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('End')
                     self.first_state_loop = False
-                    self.publish_arm_commands(0.0, 0.0, 0.0) # Arm to home position
+                    self.publish_arm_position_commands(0.0, 0.0, 0.0) # Arm to home position
     
-    def publish_arm_commands(self, q1, q2, q3):
+    def publish_arm_position_commands(self, q1, q2, q3):
         self.get_logger().debug(f'Publishing position references: ({q1}, {q2}, {q3})')
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = ['q1', 'q2', 'q3']
         msg.position = [q1, q2, q3]
         msg.velocity = [0.0, 0.0, 0.0]
+        msg.effort = [0.0, 0.0, 0.0]
+
+        self.publisher_arm.publish(msg)
+
+    def publish_arm_position_commands(self, q1, q2, q3):
+        self.get_logger().debug(f'Publishing velocity references: ({q1}, {q2}, {q3})')
+        msg = JointState()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.name = ['q1', 'q2', 'q3']
+        msg.position = [0.0, 0.0, 0.0]
+        msg.velocity = [q1, q2, q3]
         msg.effort = [0.0, 0.0, 0.0]
 
         self.publisher_arm.publish(msg)
