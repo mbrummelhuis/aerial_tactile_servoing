@@ -78,7 +78,7 @@ def generate_launch_description():
             arguments=['--ros-args', '--log-level', 'info']
         )
         ld.add_action(tactip_driver)
-    if False:
+    if True:
         param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
         servo_driver = Node(
             package="feetech_ros2",

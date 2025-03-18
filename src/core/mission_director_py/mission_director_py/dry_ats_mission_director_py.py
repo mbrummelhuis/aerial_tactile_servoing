@@ -112,7 +112,7 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('Positioning arm')
                     self.first_state_loop = False
-                    self.publish_arm_position_commands(0.0, 0.0, 0.0)
+                    self.publish_arm_position_commands(0.2, 0.0, 0.0)
 
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('position_arm_time').get_parameter_value().double_value):
