@@ -59,6 +59,10 @@ class ATSVelocityController(Node):
         # Idk why but the depth is a bit weird
         error[2] = error[2]*-1.0
 
+        # Convert to meters and rads (from mm and degs)
+        error[0:3] = error[0:3]/1000.0
+        error[3:6] = np.deg2rad(error[3:6])
+
         # integral with saturation
         self.integral = np.clip(self.integral + self.gain_integral*error*self.period, -self.max_integral, self.max_integral)
 

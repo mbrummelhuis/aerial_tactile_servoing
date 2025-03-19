@@ -1,7 +1,10 @@
 import os
 from launch import LaunchDescription
+from launch.actions import ExecuteProcess
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
+
+import datetime
 """
 Launch file for testing ATS controller with only manipulator
 
@@ -43,7 +46,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': 15.},
-            {'kp': 1.0},
+            {'kp': 5.0},
             {'ki': 0.0},
             {'kd': 0.0},
             {'max_integral': 1.0},
@@ -59,7 +62,9 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': 15.},
-            {'mode': 'dry'} # Set to 'flight to enable flight testing'
+            {'mode': 'dry'}, # Set to 'flight to enable flight testing'
+            {'verbose': False},
+            {'start_active': False}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
@@ -73,6 +78,7 @@ def generate_launch_description():
             parameters=[
                 {'source': 0},
                 {'frequency': 10.},
+                {'verbose': False},
                 {'test_model_time': False}
             ],
             arguments=['--ros-args', '--log-level', 'info']
@@ -91,9 +97,18 @@ def generate_launch_description():
         
         ld.add_action(servo_driver)
 
+    rosbag_name = 'ros2bag_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    ros2bag = ExecuteProcess(
+        cmd=['ros2', 'bag', 'record', '-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
+        output='screen', 
+        log_cmd=True,
+    )
+
     ld.add_action(mission_director)
     ld.add_action(ats_planner)
     ld.add_action(ats_velocity_controller)
     ld.add_action(inverse_dif_kinematics)
+
+    ld.add_action(ros2bag)
     
     return ld

@@ -60,6 +60,7 @@ class TactipDriver(Node):
         msg.twist.angular.y = data[4]
         msg.twist.angular.z = data[5]
         self.publisher_.publish(msg)
+        #self.get_logger().info(f"Published data: {msg}")
 
     def test_model_execution_time(self, iterations = 1000):
         start_time = time.time()

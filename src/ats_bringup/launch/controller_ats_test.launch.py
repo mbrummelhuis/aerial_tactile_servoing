@@ -44,7 +44,8 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': 15.},
-            {'mode': 'dry'} # Set to 'flight to enable flight testing'
+            {'mode': 'dry'}, # Set to 'flight to enable flight testing'
+            {'start_active': True}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )

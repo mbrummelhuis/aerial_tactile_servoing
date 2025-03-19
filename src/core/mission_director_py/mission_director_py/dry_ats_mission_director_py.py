@@ -101,8 +101,8 @@ class MissionDirectorPy(Node):
                 # TODO How to know when servo driver is ready? Now we just wait -- implement going to position as action
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('entrypoint_time').get_parameter_value().double_value):
-                    self.get_logger().info(f"Waited for 5 seconds -- switching to arm positioning")
-                    self.FSM_state = 'position_arm'
+                    self.FSM_state = 'set_velocity_mode'
+                    self.get_logger().info(f"Waited for 5 seconds -- switching to {self.FSM_state}")
                     self.state_start_time = datetime.datetime.now() # Reset state start time
                     self.first_state_loop = True # Reset first state loop flag
 
@@ -124,58 +124,14 @@ class MissionDirectorPy(Node):
                     self.get_logger().info('Setting velocity mode')
                     self.first_state_loop = False
                     self.request_set_mode(1)
+                    self.publish_arm_velocity_commands(0.0, 0.0, 0.0)
                 
                 # Transition
                 if self.future.done():
                     self.FSM_state = 'wait_for_contact'
                     self.get_logger().info(f"Servo driver mode set to velocity mode -- switching to {self.FSM_state}")
                     self.state_start_time = datetime.datetime.now()
-                    self.first_state_loop = True # Reset first state loop flag
-
-            case("test_positive_velocity_direction_q1"):
-                if self.first_state_loop:
-                    self.get_logger().info('Testing positive velocity direction')
-                    self.first_state_loop = False
-                    self.publish_arm_velocity_commands(0.1, 0.0, 0.0)
-
-                # Transition - wait 2 seconds
-                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=4.0):
-                    self.publish_arm_velocity_commands(0.0, 0.0, 0.0) # velocity back to 0
-                    self.FSM_state = 'end'
-                    self.get_logger().info(f"Waited for 4 seconds -- switching to {self.FSM_state}")
-                    self.state_start_time = datetime.datetime.now()
-                    self.first_state_loop = True # Reset first state loop flag
-
-
-            case("test_positive_velocity_direction_q2"):
-                if self.first_state_loop:
-                    self.get_logger().info('Testing positive velocity direction')
-                    self.first_state_loop = False
-                
-                self.publish_arm_velocity_commands(0.0, 0.1, 0.0)
-
-                # Transition - wait 2 seconds
-                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=4.0):
-                    self.publish_arm_velocity_commands(0.0, 0.0, 0.0)
-                    self.FSM_state = 'end'
-                    self.get_logger().info(f"Waited for 4 seconds -- switching to {self.FSM_state}")
-                    self.state_start_time = datetime.datetime.now()
-                    self.first_state_loop = True # Reset first state loop flag
-
-            case("test_positive_velocity_direction_q3"):
-                if self.first_state_loop:
-                    self.get_logger().info('Testing positive velocity direction')
-                    self.first_state_loop = False
-                
-                self.publish_arm_velocity_commands(0.0, 0.0, 0.1)
-
-                # Transition - wait 2 seconds
-                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=4.0):
-                    self.publish_arm_velocity_commands(0.0, 0.0, 0.0)
-                    self.FSM_state = 'end'
-                    self.get_logger().info(f"Waited for 4 seconds -- switching to {self.FSM_state}")
-                    self.state_start_time = datetime.datetime.now()
-                    self.first_state_loop = True
+                    self.first_state_loop = True # Reset first state loop fla
 
 
 
@@ -184,11 +140,11 @@ class MissionDirectorPy(Node):
                     self.get_logger().info('Waiting for contact')
                     self.first_state_loop = False
 
-                self.get_logger().info(f'Tactip depth: {self.tactip_data.twist.linear.z*1000}')
+                self.get_logger().info(f'Tactip depth: {self.tactip_data.twist.linear.z}')
                 #self.get_logger().info(f'Tactip conditions: {self.tactip.data.twist.linear.z*1000 < -2.0}')
                 # Transition
                 # If contact depth is greater than 1.0 mm, we assume contact.
-                if (self.tactip_data.twist.linear.z)*1000 < -2.0:
+                if (self.tactip_data.twist.linear.z) < -2.0:
                     self.get_logger().info(f"Contact detected -- activating IK")
                     self.activate_ik()
                     self.request_set_mode(1) # 1 is velocity mode
@@ -251,7 +207,7 @@ class MissionDirectorPy(Node):
         self.input_state = msg.data
 
     def tactip_callback(self, msg):
-        #self.get_logger().debug(f'Tactip data: {msg}')
+        #self.get_logger().info(f'Tactip data: {msg}')
         self.tactip_data = msg
 
     def activate_ik(self):

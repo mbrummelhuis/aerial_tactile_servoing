@@ -24,6 +24,10 @@ class InverseDifferentialKinematics(Node):
         # Parameters
         self.declare_parameter('frequency', 10.)
         self.declare_parameter('mode', 'dry') # Set mode to 'dry' or 'flight' to use manipulator/centralised jacobian
+        self.declare_parameter('verbose', False)
+        self.declare_parameter('start_active', False) # Set to True to start the node in active mode
+        self.verbose = self.get_parameter('verbose').get_parameter_value().bool_value
+        self.is_active = self.get_parameter('start_active').get_parameter_value().bool_value
 
         # Data
         self.state_body_angles_ = np.array([0., 0., 0.]) # YPR about z, y, x
@@ -47,15 +51,10 @@ class InverseDifferentialKinematics(Node):
                 self.state_body_velocity_callback,
                 10)
         # Create subscriptions related to manipulator
-        self.state_joint_positions_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/state/joint_positions',
-            self.state_joint_position_callback,
-            10)
-        self.state_joint_velocity_subscription = self.create_subscription(
-            Vector3Stamped,
-            '/state/joint_velocities',
-            self.state_joint_velocity_callback,
+        self.joint_subscription = self.create_subscription(
+            JointState,
+            '/servo/out/state',
+            self.state_joint_callback,
             10)
         self.reference_ee_velocity_subscription = self.create_subscription(
             TwistStamped,
@@ -87,7 +86,6 @@ class InverseDifferentialKinematics(Node):
         
         # Activation mechanism
         self.activation_srv = self.create_service(SetBool, 'activate_inverse_kinematics', self.activate_callback)
-        self.is_active = False
     
     def timer_callback_dry(self):
         if self.is_active:
@@ -102,11 +100,12 @@ class InverseDifferentialKinematics(Node):
             ref_state_velocities = J_pinv @ self.virtual_end_effector_velocity_inertial
 
             # Create message
-            self.get_logger().info(f"Reference velocities: {ref_state_velocities}")
+            if self.verbose:
+                self.get_logger().info(f"Reference velocities: {ref_state_velocities}")
             reference_joint_velocity = JointState()
             reference_joint_velocity.name = ['q1', 'q2', 'q3']
             reference_joint_velocity.position = [0.0, 0.0, 0.0]
-            reference_joint_velocity.velocity = [ref_state_velocities[0], ref_state_velocities[1], ref_state_velocities[2]]
+            reference_joint_velocity.velocity = [ref_state_velocities[0], 0.0, ref_state_velocities[2]]
             reference_joint_velocity.effort = [0.0, 0.0, 0.0]
 
             # Get timestamp
@@ -192,20 +191,19 @@ class InverseDifferentialKinematics(Node):
         self.state_body_angles_[1] = msg.vector.y # Pitch
         self.state_body_angles_[2] = msg.vector.x # Roll
     
-    def state_joint_position_callback(self, msg):
-        self.state_joint_positions_[0] = msg.vector.x # q1
-        self.state_joint_positions_[1] = msg.vector.y # q2
-        self.state_joint_positions_[2] = msg.vector.z # q3
+    def state_joint_callback(self, msg):
+        self.state_joint_positions_[0] = msg.position[0] # q1
+        self.state_joint_positions_[1] = msg.position[1] # q2
+        self.state_joint_positions_[2] = msg.position[2] # q3
+
+        self.state_joint_velocity_[0] = msg.velocity[0] # q1
+        self.state_joint_velocity_[1] = msg.velocity[1] # q2
+        self.state_joint_velocity_[2] = msg.velocity[2] # q3
     
     def state_body_velocity_callback(self, msg):
         self.state_body_angular_velocity_[0] = msg.twist.angular.z # Yaw
         self.state_body_angular_velocity_[1] = msg.twist.angular.y # Pitch
         self.state_body_angular_velocity_[2] = msg.twist.angular.x # Roll
-
-    def state_joint_velocity_callback(self, msg):
-        self.state_joint_velocity_[0] = msg.vector.x # q1
-        self.state_joint_velocity_[1] = msg.vector.y # q2
-        self.state_joint_velocity_[2] = msg.vector.z # q3
     
     ''' Receive EE velocity reference in contact frame 
     And rotate to world frame
