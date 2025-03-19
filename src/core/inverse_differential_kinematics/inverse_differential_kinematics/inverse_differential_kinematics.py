@@ -71,7 +71,7 @@ class InverseDifferentialKinematics(Node):
                 10)
         self.reference_joint_velocity_publisher = self.create_publisher(
             JointState,
-            '/servo/in/references/joint_velocities',
+            '/servo/in/references/joint_references',
             10)
 
         self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
@@ -207,6 +207,9 @@ class InverseDifferentialKinematics(Node):
         self.state_joint_velocity_[1] = msg.vector.y # q2
         self.state_joint_velocity_[2] = msg.vector.z # q3
     
+    ''' Receive EE velocity reference in contact frame 
+    And rotate to world frame
+    '''
     def reference_ee_velocity_callback(self, msg):
         virtual_end_effector_velocity_ = np.zeros(6)
         virtual_end_effector_velocity_[0] = msg.twist.linear.x # Body x

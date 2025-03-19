@@ -68,10 +68,12 @@ class MissionDirectorPy(Node):
         # IK activation server
         self.ik_client = self.create_client(SetBool, 'activate_inverse_kinematics')
         self.ik_req = SetBool.Request()
+        self.ik_active = False
 
         # Set mode server
         self.mode_client = self.create_client(SetMode, 'set_servo_mode')
         self.mode_req = SetMode.Request()
+        self.operating_mode = 4
 
         while not self.ik_client.wait_for_service(timeout_sec=1.0): # and not self.mode_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('services not available, waiting again...')
@@ -92,9 +94,11 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('Starting FSM')
                     self.first_state_loop = False
+                    self.publish_arm_position_commands(0.0, 0.0, 0.0) # Arm to home position
 
 
-                # TODO How to know when servo driver is ready? Now we just wait
+
+                # TODO How to know when servo driver is ready? Now we just wait -- implement going to position as action
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('entrypoint_time').get_parameter_value().double_value):
                     self.get_logger().info(f"Waited for 5 seconds -- switching to arm positioning")
@@ -106,14 +110,74 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('Positioning arm')
                     self.first_state_loop = False
-                    self.publish_arm_position_commands(-0.7, 0.0, -1.0)
+                    self.publish_arm_position_commands(1.3, 0.0, 2.7)
 
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('position_arm_time').get_parameter_value().double_value):
-                    self.get_logger().info(f"Arm positioned -- switching to wait_for_contact")
-                    self.FSM_state = 'wait_for_contact'
+                    self.FSM_state = 'set_velocity_mode'
+                    self.get_logger().info(f"Arm positioned -- switching to {self.FSM_state}")
                     self.state_start_time = datetime.datetime.now() # Reset state start time
                     self.first_state_loop = True # Reset first state loop flag
+            
+            case("set_velocity_mode"):
+                if self.first_state_loop:
+                    self.get_logger().info('Setting velocity mode')
+                    self.first_state_loop = False
+                    self.request_set_mode(1)
+                
+                # Transition
+                if self.future.done():
+                    self.FSM_state = 'wait_for_contact'
+                    self.get_logger().info(f"Servo driver mode set to velocity mode -- switching to {self.FSM_state}")
+                    self.state_start_time = datetime.datetime.now()
+                    self.first_state_loop = True # Reset first state loop flag
+
+            case("test_positive_velocity_direction_q1"):
+                if self.first_state_loop:
+                    self.get_logger().info('Testing positive velocity direction')
+                    self.first_state_loop = False
+                    self.publish_arm_velocity_commands(0.1, 0.0, 0.0)
+
+                # Transition - wait 2 seconds
+                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=4.0):
+                    self.publish_arm_velocity_commands(0.0, 0.0, 0.0) # velocity back to 0
+                    self.FSM_state = 'end'
+                    self.get_logger().info(f"Waited for 4 seconds -- switching to {self.FSM_state}")
+                    self.state_start_time = datetime.datetime.now()
+                    self.first_state_loop = True # Reset first state loop flag
+
+
+            case("test_positive_velocity_direction_q2"):
+                if self.first_state_loop:
+                    self.get_logger().info('Testing positive velocity direction')
+                    self.first_state_loop = False
+                
+                self.publish_arm_velocity_commands(0.0, 0.1, 0.0)
+
+                # Transition - wait 2 seconds
+                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=4.0):
+                    self.publish_arm_velocity_commands(0.0, 0.0, 0.0)
+                    self.FSM_state = 'end'
+                    self.get_logger().info(f"Waited for 4 seconds -- switching to {self.FSM_state}")
+                    self.state_start_time = datetime.datetime.now()
+                    self.first_state_loop = True # Reset first state loop flag
+
+            case("test_positive_velocity_direction_q3"):
+                if self.first_state_loop:
+                    self.get_logger().info('Testing positive velocity direction')
+                    self.first_state_loop = False
+                
+                self.publish_arm_velocity_commands(0.0, 0.0, 0.1)
+
+                # Transition - wait 2 seconds
+                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=4.0):
+                    self.publish_arm_velocity_commands(0.0, 0.0, 0.0)
+                    self.FSM_state = 'end'
+                    self.get_logger().info(f"Waited for 4 seconds -- switching to {self.FSM_state}")
+                    self.state_start_time = datetime.datetime.now()
+                    self.first_state_loop = True
+
+
 
             case('wait_for_contact'):
                 if self.first_state_loop:
@@ -150,7 +214,15 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('End')
                     self.first_state_loop = False
-                    self.publish_arm_position_commands(0.0, 0.0, 0.0) # Arm to home position
+                    self.request_set_mode(4) # 4 is continuous position mode
+                
+                
+                self.publish_arm_position_commands(0.0, 0.0, 0.0) # Arm to home position
+
+                if self.future.done():
+                    self.get_logger().info('Mission completed')
+                    self.get_logger().info('Shutting down')
+                    rclpy.shutdown()
     
     def publish_arm_position_commands(self, q1, q2, q3):
         self.get_logger().debug(f'Publishing position references: ({q1}, {q2}, {q3})')
@@ -190,18 +262,21 @@ class MissionDirectorPy(Node):
         self.get_logger().info('Waiting for IK service call to complete')
 
     def activate_ik_callback(self, future):
-        try:
-            response = future.result()
-            self.get_logger().info('Service call completed')
-        except Exception as e:
-            self.get_logger().info(f'Service call failed {e}')
+        response = future.result()
+        self.get_logger().info('Service call completed -- IK active')
+        self.ik_active = True
 
     def deactivate_ik(self):
         self.ik_req.data = False
         self.future = self.ik_client.call_async(self.ik_req)
-        self.future.add_done_callback(self.activate_ik_callback)
+        self.future.add_done_callback(self.deactivate_ik_callback)
 
         self.get_logger().info('Waiting for IK service call to complete')
+
+    def deactivate_ik_callback(self, future):
+        response = future.result()
+        self.get_logger().info('Service call completed -- IK deactivated')
+        self.ik_active = False
 
     '''
     Request to set the servo driver mode. Mode 0 is default position mode, mode 1 is velocity mode, mode 4 is continuous position mode.

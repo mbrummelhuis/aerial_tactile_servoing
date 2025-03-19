@@ -56,6 +56,9 @@ class ATSVelocityController(Node):
         # Compute the error
         error = self.reference_pose_ - self.tactip_pose_
 
+        # Idk why but the depth is a bit weird
+        error[2] = error[2]*-1.0
+
         # integral with saturation
         self.integral = np.clip(self.integral + self.gain_integral*error*self.period, -self.max_integral, self.max_integral)
 
@@ -79,20 +82,20 @@ class ATSVelocityController(Node):
         self.ee_reference_velocity_subscriber_.publish(msg)
 
     def ee_measured_pose_callback(self, msg):
-        self.tactip_pose_[0]=msg.twist.linear.x # [m] end effector measured x in contact frame (6d)
-        self.tactip_pose_[1]=msg.twist.linear.y # [m] end effector measured y in contact frame (6d)
-        self.tactip_pose_[2]=msg.twist.linear.z # [m] end effector measured z in contact frame (3d)
-        self.tactip_pose_[3]=msg.twist.angular.z # [rad] end effector measured yaw in contact frame (6d)
-        self.tactip_pose_[4]=msg.twist.angular.y # [rad] end effector measured pitch in contact frame (3d)
-        self.tactip_pose_[5]=msg.twist.angular.x # [rad] end effector measured roll in contact frame (3d)
+        self.tactip_pose_[0]=msg.twist.linear.x # [mm] end effector measured x in contact frame (6d)
+        self.tactip_pose_[1]=msg.twist.linear.y # [mm] end effector measured y in contact frame (6d)
+        self.tactip_pose_[2]=msg.twist.linear.z # [mm] end effector measured z in contact frame (3d)
+        self.tactip_pose_[3]=msg.twist.angular.z # [deg] end effector measured yaw in contact frame (6d)
+        self.tactip_pose_[4]=msg.twist.angular.y # [deg] end effector measured pitch in contact frame (3d)
+        self.tactip_pose_[5]=msg.twist.angular.x # [deg] end effector measured roll in contact frame (3d)
 
     def ee_reference_pose_callback(self, msg):
-        self.reference_pose_[0]=msg.twist.linear.x # [m] end effector x ref in contact frame (6d) m
-        self.reference_pose_[1]=msg.twist.linear.y # [m] end effector y ref in contact frame (6d) m
-        self.reference_pose_[2]=msg.twist.linear.z # [m] end effector z ref in contact frame (3d) m
-        self.reference_pose_[3]=msg.twist.angular.z # [rad] end effector yaw ref in contact frame (6d) rad
-        self.reference_pose_[4]=msg.twist.angular.y # [rad] end effector pitch ref in contact frame (3d) rad
-        self.reference_pose_[5]=msg.twist.angular.x # [rad] end effector roll ref in contact frame (3d) rad
+        self.reference_pose_[0]=msg.twist.linear.x # [mm] end effector x ref in contact frame (6d) m
+        self.reference_pose_[1]=msg.twist.linear.y # [mm] end effector y ref in contact frame (6d) m
+        self.reference_pose_[2]=msg.twist.linear.z # [mm] end effector z ref in contact frame (3d) m
+        self.reference_pose_[3]=msg.twist.angular.z # [deg] end effector yaw ref in contact frame (6d)
+        self.reference_pose_[4]=msg.twist.angular.y # [deg] end effector pitch ref in contact frame (3d)
+        self.reference_pose_[5]=msg.twist.angular.x # [deg] end effector roll ref in contact frame (3d) 
 
 def main(args=None):
     rclpy.init(args=args)

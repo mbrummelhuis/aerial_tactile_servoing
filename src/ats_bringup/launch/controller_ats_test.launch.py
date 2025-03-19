@@ -11,21 +11,6 @@ The package can be launched with 'ros2 launch ats_bringup ats_test_launch.launch
 def generate_launch_description():
     ld = LaunchDescription()
 
-    mission_director = Node(
-        package='mission_director_py',
-        executable='dry_ats_md',
-        name='mission_director',
-        output='screen',
-        parameters=[
-            {'initial_joint_states': [0.0, 0.0, 0.0]},
-            {'entrypoint_time': 10.0},
-            {'position_arm_time': 20.0},
-            {'tactile_servoing_time': 30.0},
-            {'frequency': 15.}
-        ],
-        arguments=['--ros-args', '--log-level', 'info']
-    )
-
     ats_planner = Node(
         package='ats_planner',
         executable='ats_planner',
@@ -73,25 +58,13 @@ def generate_launch_description():
             parameters=[
                 {'source': 0},
                 {'frequency': 10.},
+                {'verbose': True},
                 {'test_model_time': False}
             ],
             arguments=['--ros-args', '--log-level', 'info']
         )
         ld.add_action(tactip_driver)
-    if True:
-        param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
-        servo_driver = Node(
-            package="feetech_ros2",
-            executable="feetech_ros2_interface",
-            name="feetech_ros2_interface",
-            output="screen",
-            parameters=[param_file],
-            arguments=["--ros-args", "--log-level", "info"]
-        )
-        
-        ld.add_action(servo_driver)
 
-    ld.add_action(mission_director)
     ld.add_action(ats_planner)
     ld.add_action(ats_velocity_controller)
     ld.add_action(inverse_dif_kinematics)

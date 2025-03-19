@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from math import pi
 import time
+import cv2
 
 from geometry_msgs.msg import TwistStamped
 
@@ -16,6 +17,7 @@ class TactipDriver(Node):
         # Parameters
         self.declare_parameter('source', 4)
         self.declare_parameter('frequency', 10.)
+        self.declare_parameter('verbose', False)
         self.declare_parameter('test_model_time', False)
 
         self.get_logger().info("Tactip driver initialized")
@@ -35,22 +37,28 @@ class TactipDriver(Node):
         self.timer = self.create_timer(self.period, self.timer_callback)
 
     def timer_callback(self):
+        raw_img = self.sensor.read()
         # read the data
-        processed_image = self.sensor.process()
-        data = self.sensor.predict(processed_image)
+        sensor_image = self.sensor.process()
+        #processed_image = process_image(sensor_image, **processed_image_params)
+        data = self.sensor.predict(sensor_image)
+        # The model outputs the sensor pose in the contact frame, but we want the contact frame pose in the sensor frame
+        # The -1 is a little bit hacky
+        data = data*-1.
 
-        #self.get_logger().info(f"TacTip data: {data}")
+        if self.get_parameter('verbose').get_parameter_value().bool_value:
+            self.get_logger().info(f"Z (mm): {data[2]:.2f} \t Rx (deg): {data[3]:.2f} \t Ry (deg): {data[4]:.2f}")
 
         # publish the data
         # The model outputs are in mm and deg, so convert to SI
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.twist.linear.x = data[0]/1000.
-        msg.twist.linear.y = data[1]/1000.
-        msg.twist.linear.z = data[2]/-1000. # Positive is deeper, but convention is positive is less contact
-        msg.twist.angular.x = data[3]*2.*pi/360.
-        msg.twist.angular.y = data[4]*2.*pi/360.
-        msg.twist.angular.z = data[5]*2.*pi/360.
+        msg.twist.linear.x = data[0]
+        msg.twist.linear.y = data[1]
+        msg.twist.linear.z = data[2]
+        msg.twist.angular.x = data[3]
+        msg.twist.angular.y = data[4]
+        msg.twist.angular.z = data[5]
         self.publisher_.publish(msg)
 
     def test_model_execution_time(self, iterations = 1000):
