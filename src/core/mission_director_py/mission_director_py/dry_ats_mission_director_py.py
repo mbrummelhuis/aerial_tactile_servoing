@@ -75,9 +75,6 @@ class MissionDirectorPy(Node):
 
         while not self.ik_client.wait_for_service(timeout_sec=1.0): # and not self.mode_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('services not available, waiting again...')
-        
-        # Set driver to position mode
-        #self.request_set_mode(4) # 4 is continuous position mode
 
         # set initial state
         self.FSM_state = 'entrypoint'
@@ -96,9 +93,6 @@ class MissionDirectorPy(Node):
                     self.get_logger().info('Starting FSM')
                     self.first_state_loop = False
 
-                    # Set driver to position mode (0)
-                    #self.request_set_mode(0)
-
 
                 # TODO How to know when servo driver is ready? Now we just wait
                 # Transition
@@ -112,12 +106,12 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('Positioning arm')
                     self.first_state_loop = False
-                    self.publish_arm_position_commands(0.2, 0.0, 0.0)
+                    self.publish_arm_position_commands(-0.7, 0.0, -1.0)
 
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('position_arm_time').get_parameter_value().double_value):
-                    self.get_logger().info(f"Arm positioned -- switching to end")
-                    self.FSM_state = 'end'
+                    self.get_logger().info(f"Arm positioned -- switching to wait_for_contact")
+                    self.FSM_state = 'wait_for_contact'
                     self.state_start_time = datetime.datetime.now() # Reset state start time
                     self.first_state_loop = True # Reset first state loop flag
 
@@ -130,9 +124,10 @@ class MissionDirectorPy(Node):
                 #self.get_logger().info(f'Tactip conditions: {self.tactip.data.twist.linear.z*1000 < -2.0}')
                 # Transition
                 # If contact depth is greater than 1.0 mm, we assume contact.
-                if (self.tactip_data.twist.linear.z)*1000 < -2.0:# and self.request_set_mode(1) is not None:
+                if (self.tactip_data.twist.linear.z)*1000 < -2.0:
                     self.get_logger().info(f"Contact detected -- activating IK")
                     self.activate_ik()
+                    self.request_set_mode(1) # 1 is velocity mode
                     self.get_logger().info('Contact detected, IK activated, servo velocity mode set -- switching to tactile servoing')
                     self.FSM_state = 'tactile_servoing'
                     self.state_start_time = datetime.datetime.now()

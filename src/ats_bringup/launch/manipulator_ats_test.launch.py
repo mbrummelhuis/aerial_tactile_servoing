@@ -19,7 +19,7 @@ def generate_launch_description():
         parameters=[
             {'initial_joint_states': [0.0, 0.0, 0.0]},
             {'entrypoint_time': 5.0},
-            {'position_arm_time': 5.0},
+            {'position_arm_time': 10.0},
             {'tactile_servoing_time': 30.0},
             {'frequency': 15.}
         ],
