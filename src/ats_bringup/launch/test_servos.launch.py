@@ -1,5 +1,10 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
+from launch.actions import ExecuteProcess
+from ament_index_python.packages import get_package_share_directory
+import os
+import datetime
+
 import launch
 
 """
@@ -10,42 +15,26 @@ The package can be launched with 'ros2 launch ats_bringup test_servos.launch.py'
 
 def generate_launch_description():
     ld = LaunchDescription()
-
-
-    # SERVO IDS
-    # Pivot FCU side: 1
-    # Shoulder FCU side: 12
-    # Elbow FCU side:??
-    # Pivot OPI side: 11
-    # Shoulder OPI side : 2
-    # Elbow OPI side: ??
-
-    # PINS:
-    # Green: 3
-    # Blue: 4
-    # White: 9
-    # Yellow: 10
     
-    feetech_servo_driver = Node(
-        package='feetech_ros2_driver',
-        executable='feetech_ros2_driver',
-        name='feetech_ros2_driver',
-        output='screen',
-        parameters=[
-            {'pivot_id': 11},
-            {'shoulder_id':2},
-            {'elbow_id': 13},
-            {'limit_pivot': 4},
-            {'limit_shoulder': 10},
-            {'home_velocity': 50},
-            {'port': '/dev/ttyUSB0'},
-            {'frequency': 20},
-            {'namespace': 'servo1'},
-            {'qos_depth': 10}
-        ],
-        arguments=['--ros-args', '--log-level', 'info']
+
+    param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
+    servo_driver = Node(
+        package="feetech_ros2",
+        executable="feetech_ros2_interface",
+        name="feetech_ros2_interface",
+        output="screen",
+        parameters=[param_file],
+        arguments=["--ros-args", "--log-level", "info"]
     )
 
-    ld.add_action(feetech_servo_driver)
+    rosbag_name = 'ros2bag_servo_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    ros2bag = ExecuteProcess(
+        cmd=['ros2', 'bag', 'record', '-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
+        output='screen', 
+        log_cmd=True,
+    )
+
+    ld.add_action(servo_driver)
+    ld.add_action(ros2bag)
     
     return ld
