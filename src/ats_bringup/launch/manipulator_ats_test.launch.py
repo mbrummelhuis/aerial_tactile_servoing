@@ -11,6 +11,13 @@ Launch file for testing ATS controller with only manipulator
 The package can be launched with 'ros2 launch ats_bringup ats_test_launch.launch.py'
 """
 
+logging = True
+tactip_enable = True
+servo_enable = True
+
+major_frequency = 25.0
+
+
 def generate_launch_description():
     ld = LaunchDescription()
 
@@ -24,7 +31,7 @@ def generate_launch_description():
             {'entrypoint_time': 10.0},
             {'position_arm_time': 20.0},
             {'tactile_servoing_time': 30.0},
-            {'frequency': 15.}
+            {'frequency': major_frequency}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
@@ -45,7 +52,7 @@ def generate_launch_description():
         name='ats_velocity_controller',
         output='screen',
         parameters=[
-            {'frequency': 15.},
+            {'frequency': major_frequency},
             {'kp': 5.0},
             {'ki': 0.0},
             {'kd': 0.0},
@@ -61,7 +68,7 @@ def generate_launch_description():
         name='inverse_differential_kinematics',
         output='screen',
         parameters=[
-            {'frequency': 15.},
+            {'frequency': major_frequency},
             {'mode': 'dry'}, # Set to 'flight to enable flight testing'
             {'verbose': False},
             {'start_active': False}
@@ -69,7 +76,7 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'info']
     )
 
-    if True:
+    if tactip_enable:
         tactip_driver = Node(
             package='tactip_ros2_driver',
             executable='tactip_ros2_driver',
@@ -77,14 +84,14 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 {'source': 0},
-                {'frequency': 10.},
+                {'frequency': major_frequency},
                 {'verbose': False},
                 {'test_model_time': False}
             ],
             arguments=['--ros-args', '--log-level', 'info']
         )
         ld.add_action(tactip_driver)
-    if True:
+    if servo_enable:
         param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
         servo_driver = Node(
             package="feetech_ros2",
@@ -97,12 +104,13 @@ def generate_launch_description():
         
         ld.add_action(servo_driver)
 
-    rosbag_name = 'ros2bag_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    ros2bag = ExecuteProcess(
-        cmd=['ros2', 'bag', 'record', '-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
-        output='screen', 
-        log_cmd=True,
-    )
+    if logging:
+        rosbag_name = 'ros2bag_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        ros2bag = ExecuteProcess(
+            cmd=['ros2', 'bag', 'record', '-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
+            output='screen', 
+            log_cmd=True,
+        )
 
     ld.add_action(mission_director)
     ld.add_action(ats_planner)

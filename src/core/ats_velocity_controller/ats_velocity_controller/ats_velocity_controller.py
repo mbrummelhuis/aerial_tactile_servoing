@@ -57,7 +57,7 @@ class ATSVelocityController(Node):
         error = self.reference_pose_ - self.tactip_pose_
 
         # Idk why but the depth is a bit weird
-        error[2] = error[2]*-1.0
+        error = error*-1.0
 
         # Convert to meters and rads (from mm and degs)
         error[0:3] = error[0:3]/1000.0

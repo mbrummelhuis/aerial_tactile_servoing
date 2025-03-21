@@ -1,7 +1,7 @@
 /feetech_ros2_interface:
   ros__parameters:
     node:
-      frequency: 10.0
+      frequency: 25.0
 
     driver:
       port_name: "/dev/ttyUSB0"

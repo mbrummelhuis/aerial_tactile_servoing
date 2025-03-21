@@ -101,7 +101,7 @@ class MissionDirectorPy(Node):
                 # TODO How to know when servo driver is ready? Now we just wait -- implement going to position as action
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('entrypoint_time').get_parameter_value().double_value):
-                    self.FSM_state = 'set_velocity_mode'
+                    self.FSM_state = 'position_arm'
                     self.get_logger().info(f"Waited for 5 seconds -- switching to {self.FSM_state}")
                     self.state_start_time = datetime.datetime.now() # Reset state start time
                     self.first_state_loop = True # Reset first state loop flag
@@ -110,7 +110,7 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info('Positioning arm')
                     self.first_state_loop = False
-                    self.publish_arm_position_commands(1.3, 0.0, 2.7)
+                    self.publish_arm_position_commands(1.3, 0.0, 2.8)
 
                 # Transition
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=self.get_parameter('position_arm_time').get_parameter_value().double_value):
