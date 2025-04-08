@@ -32,12 +32,11 @@ class TactipDriver(Node):
         self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
         self.period = 1.0/self.frequency # seconds
         if self.get_parameter('test_model_time').get_parameter_value().bool_value:
-            self.get_logger().info("Testing model execution time")
+            self.get_logger().info("Testing model execution time. It will run 1000 predictions through the model and print the average time taken.")
             self.test_model_execution_time()
         self.timer = self.create_timer(self.period, self.timer_callback)
 
     def timer_callback(self):
-        raw_img = self.sensor.read()
         # read the data
         sensor_image = self.sensor.process()
         #processed_image = process_image(sensor_image, **processed_image_params)
@@ -70,7 +69,7 @@ class TactipDriver(Node):
         end_time = time.time()
         self.get_logger().info(f"Time taken for {iterations} iterations: {end_time - start_time} [seconds]")
         self.get_logger().info(f"Average time taken: {(end_time - start_time)/iterations} [seconds/it]")
-        self.get_logger().info(f"Iterations per secon: {iterations/(end_time - start_time)} [it/s]")
+        self.get_logger().info(f"Iterations per second: {iterations/(end_time - start_time)} [it/s]")
 
 def main(args=None):
     rclpy.init(args=args)

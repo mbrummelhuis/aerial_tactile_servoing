@@ -42,7 +42,7 @@ def generate_launch_description():
         name='ats_planner',
         output='screen',
         parameters=[
-            {'frequency': 15.}
+            {'frequency': major_frequency}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
@@ -86,7 +86,7 @@ def generate_launch_description():
                 {'source': 0},
                 {'frequency': major_frequency},
                 {'verbose': False},
-                {'test_model_time': False}
+                {'test_model_time': True}
             ],
             arguments=['--ros-args', '--log-level', 'info']
         )
