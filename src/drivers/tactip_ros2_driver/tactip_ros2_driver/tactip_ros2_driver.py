@@ -63,13 +63,22 @@ class TactipDriver(Node):
 
     def test_model_execution_time(self, iterations = 1000):
         start_time = time.time()
+        capture_time = []
+        predict_time = []
         for i in range(iterations):
+            capture_start_time = time.time()
             processed_image = self.sensor.process()
+            capture_end_time = time.time()
             data = self.sensor.predict(processed_image)
+            predict_end_time = time.time()
+            capture_time.append(capture_end_time - capture_start_time)
+            predict_time.append(predict_end_time - capture_end_time)
         end_time = time.time()
         self.get_logger().info(f"Time taken for {iterations} iterations: {end_time - start_time} [seconds]")
         self.get_logger().info(f"Average time taken: {(end_time - start_time)/iterations} [seconds/it]")
         self.get_logger().info(f"Iterations per second: {iterations/(end_time - start_time)} [it/s]")
+        self.get_logger().info(f"Average capture time: {sum(capture_time)/iterations} [seconds/it]")
+        self.get_logger().info(f"Average predict time: {sum(predict_time)/iterations} [seconds/it]")
 
 def main(args=None):
     rclpy.init(args=args)

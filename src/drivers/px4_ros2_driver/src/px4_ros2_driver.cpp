@@ -14,7 +14,8 @@ PX4ROS2Driver::PX4ROS2Driver() :
     vehicle_status_subscription_(nullptr),
     vehicle_body_rates_reference_subscription_(nullptr),
     latest_rate_reference_{0.0, 0.0, 0.0},
-    offboard_mode_(OffboardMode::BODY_RATE)
+    latest_vel_reference_{0.0, 0.0, 0.0},
+    offboard_mode_(OffboardMode::POSITION)
     {
         // Set QOS settings
         rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;
@@ -24,7 +25,11 @@ PX4ROS2Driver::PX4ROS2Driver() :
         
         vehicle_status_subscription_ = this->create_subscription<VehicleStatus>("fmu/out/vehicle_status", qos, std::bind(&PX4ROS2Driver::vehicleStatusCallback, this, std::placeholders::_1));
         vehicle_body_rates_reference_subscription_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/references/body_velocities", qos, std::bind(&PX4ROS2Driver::vehicleBodyRatesReferenceCallback, this, std::placeholders::_1));
+        vehicle_velocity_reference_subscription_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>("/references/velocity", qos, std::bind(&PX4ROS2Driver::vehicleVelocityReferenceCallback, this, std::placeholders::_1));
 
+        // Mode parameter
+        this->declare_parameter("offboard_mode", "position");
+        setDriverMode();
 
         // Create timer
         this->declare_parameter("frequency", 10);
@@ -50,6 +55,53 @@ void PX4ROS2Driver::vehicleBodyRatesReferenceCallback(const geometry_msgs::msg::
     latest_rate_reference_[0] = msg->vector.z; // Yaw rate
     latest_rate_reference_[1] = msg->vector.y; // Pitch rate
     latest_rate_reference_[2] = msg->vector.x; // Roll rate
+}
+
+void PX4ROS2Driver::vehicleVelocityReferenceCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg)
+{
+    latest_rate_reference_[0] = msg->vector.x; // Yaw rate
+    latest_rate_reference_[1] = msg->vector.y; // Pitch rate
+    latest_rate_reference_[2] = msg->vector.z; // Roll rate
+}
+
+void PX4ROS2Driver::setDriverMode()
+{
+    std::string mode = this->get_parameter("offboard_mode").as_string();
+    if (mode=="position")
+    {
+        offboard_mode_ = OffboardMode::POSITION;
+    }
+    else if (mode=="velocity")
+    {
+        offboard_mode_ = OffboardMode::VELOCITY;
+    }
+    else if (mode=="acceleration")
+    {
+        offboard_mode_ = OffboardMode::ACCELERATION;
+    }
+    else if (mode=="attitude")
+    {
+        offboard_mode_ = OffboardMode::ATTITUDE;
+    }
+    else if (mode=="body_rate")
+    {
+        offboard_mode_ = OffboardMode::BODY_RATE;
+    }
+    else if (mode=="thrust_and_torque")
+    {
+        offboard_mode_ = OffboardMode::THRUST_AND_TORQUE;
+    }
+    else if (mode=="direct_actuator")
+    {
+        offboard_mode_ = OffboardMode::DIRECT_ACTUATOR;
+    }
+    else
+    {
+        RCLCPP_ERROR(this->get_logger(), "Invalid offboard mode: %s", mode.c_str());
+        RCLCPP_ERROR(this->get_logger(), "Crashing node due to invalid mode. Please set a valid mode.");
+        exit(1); // Crash the node if the mode is valid
+    }
+    
 }
 
 void PX4ROS2Driver::land()

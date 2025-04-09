@@ -55,6 +55,9 @@ class PX4ROS2Driver : public rclcpp::Node
 
     rclcpp::TimerBase::SharedPtr timer_;
 
+    // Private methods
+    void setDriverMode();
+
     // Publishers
     rclcpp::Publisher<OffboardControlMode>::SharedPtr offboard_control_mode_publisher_;
     rclcpp::Publisher<TrajectorySetpoint>::SharedPtr trajectory_setpoint_publisher_;
@@ -65,10 +68,12 @@ class PX4ROS2Driver : public rclcpp::Node
     // Subscriptions
     rclcpp::Subscription<VehicleStatus>::SharedPtr vehicle_status_subscription_;
     rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr vehicle_body_rates_reference_subscription_;
+    rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr vehicle_velocity_reference_subscription_;
 
     OffboardMode offboard_mode_;
 
     // Node data
     VehicleStatus vehicle_status_;
     float latest_rate_reference_[3];
+    float latest_vel_reference_[3];
   };

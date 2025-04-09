@@ -17,7 +17,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'source': 4},
-            {'frequency': 25.},
+            {'frequency': 10.},
             {'verbose': False},
             {'test_model_time': True}
         ],
