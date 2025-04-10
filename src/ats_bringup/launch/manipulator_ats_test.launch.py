@@ -12,7 +12,7 @@ The package can be launched with 'ros2 launch ats_bringup ats_test_launch.launch
 """
 
 logging = True
-tactip_enable = True
+tactip_enable = False
 servo_enable = True
 
 major_frequency = 25.0

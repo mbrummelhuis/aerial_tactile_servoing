@@ -13,6 +13,8 @@ Launch file for testing the ROS2 Dynamixel driver (for Feetech servos).
 The package can be launched with 'ros2 launch ats_bringup test_servos.launch.py'
 """
 
+logging = False
+
 def generate_launch_description():
     ld = LaunchDescription()
     
@@ -27,14 +29,15 @@ def generate_launch_description():
         arguments=["--ros-args", "--log-level", "info"]
     )
 
-    rosbag_name = 'ros2bag_servo_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    ros2bag = ExecuteProcess(
-        cmd=['ros2', 'bag', 'record', '-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
-        output='screen', 
-        log_cmd=True,
-    )
+    if logging:
+        rosbag_name = 'ros2bag_servo_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        ros2bag = ExecuteProcess(
+            cmd=['ros2', 'bag', 'record', '-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
+            output='screen', 
+            log_cmd=True,
+        )
+        ld.add_action(ros2bag)
 
     ld.add_action(servo_driver)
-    ld.add_action(ros2bag)
     
     return ld

@@ -50,7 +50,7 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'info']
     )
 
-    if True:
+    if False:
         tactip_driver = Node(
             package='tactip_ros2_driver',
             executable='tactip_ros2_driver',
