@@ -17,11 +17,14 @@ setup(
     maintainer_email='mbrummelhuis@gmail.com',
     description='TODO: Package description',
     license='TODO: License declaration',
-    tests_require=['pytest'],
+    extras_require={
+        'test': ['pytest'],
+    },
     entry_points={
         'console_scripts': [
             'esa_demo_md = mission_director_py.mission_director_py:main',
             'dry_ats_md = mission_director_py.dry_ats_mission_director_py:main',
+            'sim_mission_director = mission_director_py.sim_mission_director_py:main',
         ],
     },
 )

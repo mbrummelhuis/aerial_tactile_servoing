@@ -11,7 +11,7 @@ Launch file for testing ATS controller with only manipulator
 The package can be launched with 'ros2 launch ats_bringup ats_test_launch.launch.py'
 """
 
-logging = True
+logging = False
 tactip_enable = False
 servo_enable = True
 

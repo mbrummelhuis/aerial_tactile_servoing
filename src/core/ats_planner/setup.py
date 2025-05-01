@@ -17,7 +17,9 @@ setup(
     maintainer_email='mbrummelhuis@gmail.com',
     description='TODO: Package description',
     license='GPL-3.0-only',
-    tests_require=['pytest'],
+    extras_require={
+        'test': ['pytest'],
+    },
     entry_points={
         'console_scripts': [
             'ats_planner = ats_planner.ats_planner:main',

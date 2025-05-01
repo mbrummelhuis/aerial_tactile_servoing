@@ -28,7 +28,9 @@ setup(
     maintainer_email='mbrummelhuis@gmail.com',
     description='ROS2 interface package for TacTip optical tactile sensor',
     license='GPL-3.0-only',
-    tests_require=['pytest'],
+    extras_require={
+        'test': ['pytest'],
+    },
     entry_points={
         'console_scripts': [
             'tactip_ros2_driver = tactip_ros2_driver.tactip_ros2_driver:main',

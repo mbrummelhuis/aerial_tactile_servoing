@@ -17,7 +17,9 @@ setup(
     maintainer_email='mbrummelhuis@gmail.com',
     description='Package containing inverse differential kinematics algorithms for ATS project',
     license='GPL-3.0-only',
-    tests_require=['pytest'],
+    extras_require={
+        'test': ['pytest'],
+    },
     entry_points={
         'console_scripts': [
             'inverse_differential_kinematics = inverse_differential_kinematics.inverse_differential_kinematics:main'
