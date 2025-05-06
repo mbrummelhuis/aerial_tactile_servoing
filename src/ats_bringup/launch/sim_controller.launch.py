@@ -39,11 +39,13 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
-            {'takeoff_altitude': 1.5},
-            {'landing_velocity': -0.5}
+            {'takeoff_altitude': -1.5},
+            {'landing_velocity': -0.5},
+            {'hover_time': 5.0}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
+    ld.add_action(mission_director)
 
     ats_planner = Node(
         package='ats_planner',
@@ -55,36 +57,39 @@ def generate_launch_description():
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
+    ld.add_action(ats_planner)
 
-#    ats_velocity_controller = Node(
-#        package='ats_velocity_controller',
-#        executable='ats_velocity_controller',
-#        name='ats_velocity_controller',
-#        output='screen',
-#        parameters=[
-#            {'frequency': LaunchConfiguration('major_frequency')},
-#            {'kp': 5.0},
-#            {'ki': 0.0},
-#            {'kd': 0.0},
-#            {'max_integral': 1.0},
-#            {'ewma_alpha': 0.3}
-#        ],
-#        arguments=['--ros-args', '--log-level', 'info']
-#    )
+    ats_velocity_controller = Node(
+        package='ats_velocity_controller',
+        executable='ats_velocity_controller',
+        name='ats_velocity_controller',
+        output='screen',
+        parameters=[
+            {'frequency': LaunchConfiguration('major_frequency')},
+            {'kp': 5.0},
+            {'ki': 0.0},
+            {'kd': 0.0},
+            {'max_integral': 1.0},
+            {'ewma_alpha': 0.3}
+        ],
+        arguments=['--ros-args', '--log-level', 'info']
+    )
+    ld.add_action(ats_velocity_controller)
 
-#    inverse_dif_kinematics = Node(
-#        package='inverse_differential_kinematics',
-#        executable='inverse_differential_kinematics',
-#        name='inverse_differential_kinematics',
-#        output='screen',
-#        parameters=[
-#            {'frequency': LaunchConfiguration('major_frequency')},
-#            {'mode': 'flight'}, # Set to 'flight to enable flight testing'
-#            {'verbose': False},
-#            {'start_active': False}
-#        ],
-#        arguments=['--ros-args', '--log-level', 'info']
-#    )
+    inverse_dif_kinematics = Node(
+        package='inverse_differential_kinematics',
+        executable='inverse_differential_kinematics',
+        name='inverse_differential_kinematics',
+        output='screen',
+        parameters=[
+            {'frequency': LaunchConfiguration('major_frequency')},
+            {'mode': 'flight'}, # Set to 'flight to enable flight testing'
+            {'verbose': False},
+            {'start_active': False}
+        ],
+        arguments=['--ros-args', '--log-level', 'info']
+    )
+    ld.add_action(inverse_dif_kinematics)
     if LaunchConfiguration('tactip_enable') == 'true':
         tactip_driver = Node(
             package='tactip_ros2_driver',
@@ -101,11 +106,4 @@ def generate_launch_description():
         )
         ld.add_action(tactip_driver)
 
-    # Add the launch file for the simulation
-    ld.add_action(mission_director)
-    ld.add_action(ats_planner)
-    #ld.add_action(ats_velocity_controller)
-    #ld.add_action(inverse_dif_kinematics)
-
-    
     return ld

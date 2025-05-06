@@ -27,7 +27,6 @@ class InverseDifferentialKinematics(Node):
         self.declare_parameter('verbose', False)
         self.declare_parameter('start_active', False) # Set to True to start the node in active mode
         self.verbose = self.get_parameter('verbose').get_parameter_value().bool_value
-        self.is_active = self.get_parameter('start_active').get_parameter_value().bool_value
 
         # Data
         self.state_body_angles_ = np.array([0., 0., 0.]) # YPR about z, y, x
@@ -88,31 +87,30 @@ class InverseDifferentialKinematics(Node):
         self.activation_srv = self.create_service(SetBool, 'activate_inverse_kinematics', self.activate_callback)
     
     def timer_callback_dry(self):
-        if self.is_active:
-            # Set the state
-            self.state = {
-                'q1': self.state_joint_positions_[0],
-                'q2': self.state_joint_positions_[1],
-                'q3': self.state_joint_positions_[2],
-            }
-            self.jacobian.set_state(self.state)
-            J_pinv = self.jacobian.evaluate_pseudoinverse_jacobian()
-            ref_state_velocities = J_pinv @ self.virtual_end_effector_velocity_inertial
+        # Set the state
+        self.state = {
+            'q1': self.state_joint_positions_[0],
+            'q2': self.state_joint_positions_[1],
+            'q3': self.state_joint_positions_[2],
+        }
+        self.jacobian.set_state(self.state)
+        J_pinv = self.jacobian.evaluate_pseudoinverse_jacobian()
+        ref_state_velocities = J_pinv @ self.virtual_end_effector_velocity_inertial
 
-            # Create message
-            if self.verbose:
-                self.get_logger().info(f"Reference velocities: {ref_state_velocities}")
-            reference_joint_velocity = JointState()
-            reference_joint_velocity.name = ['q1', 'q2', 'q3']
-            reference_joint_velocity.position = [0.0, 0.0, 0.0]
-            reference_joint_velocity.velocity = [ref_state_velocities[0], 0.0, ref_state_velocities[2]]
-            reference_joint_velocity.effort = [0.0, 0.0, 0.0]
+        # Create message
+        if self.verbose:
+            self.get_logger().info(f"Reference velocities: {ref_state_velocities}")
+        reference_joint_velocity = JointState()
+        reference_joint_velocity.name = ['q1', 'q2', 'q3']
+        reference_joint_velocity.position = [0.0, 0.0, 0.0]
+        reference_joint_velocity.velocity = [ref_state_velocities[0], 0.0, ref_state_velocities[2]]
+        reference_joint_velocity.effort = [0.0, 0.0, 0.0]
 
-            # Get timestamp
-            reference_joint_velocity.header.stamp = self.get_clock().now().to_msg()
+        # Get timestamp
+        reference_joint_velocity.header.stamp = self.get_clock().now().to_msg()
 
-            # Publish the references
-            self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
+        # Publish the references
+        self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
 
     def timer_callback_flight(self): # TODO finish implementation
         # Set the state
@@ -155,13 +153,6 @@ class InverseDifferentialKinematics(Node):
         # Publish the references
         self.reference_linear_velocity_publisher.publish(reference_body_rates)
         self.reference_joint_velocity_publisher.publish(reference_joint_velocity)
-        
-    def activate_callback(self, request, response):
-        self.is_active = request.data
-        response.success = True
-        response.message = f"Inverse kinematics passthrough {'activated' if self.is_active else 'deactivated'}"
-        self.get_logger().info(response.message)
-        return response
     
     def rotate_to_world_frame(self, vector):
         """

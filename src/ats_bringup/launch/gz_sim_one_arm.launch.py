@@ -17,16 +17,7 @@ def generate_launch_description():
     sim_launch_path = os.path.join(get_package_share_directory('px4_uam_sim'), 'launch', 'gz_martijn_one_arm.launch.py')
     sim_controller_path = os.path.join(get_package_share_directory('ats_bringup'), 'launch', 'sim_controller.launch.py')
 
-    # Add mocap forwarder to simulation
-    mocap_forwarder = Node(
-        package='px4_uam_sim',
-        executable='mocap_forwarder',
-        name='mocap_forwarder',
-        output='screen'
-    )
-
     return LaunchDescription([
-        mocap_forwarder,
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(sim_launch_path),
             launch_arguments={'logging': 'false', 'tactip_enable': 'false', 'major_frequency': '25.0'}.items()),

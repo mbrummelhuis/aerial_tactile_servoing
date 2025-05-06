@@ -8,4 +8,4 @@
 [submodule "src/px4_uam_sim"]
 	path = src/px4_uam_sim
 	url = git@github.com:BioMorphic-Intelligence-Lab/px4_uam_sim.git
-	branch = humble
+	branch = main
