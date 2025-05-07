@@ -19,13 +19,12 @@ class InverseDifferentialKinematics(Node):
     """
     def __init__(self):
         super().__init__('inverse_differential_kinematics')
-        self.jacobian = CentralisedJacobian()
+        self.jacobian = CentralisedJacobian(mode='linear') # linear -> linear body velocities angular -> angular body velocities
 
         # Parameters
         self.declare_parameter('frequency', 10.)
         self.declare_parameter('mode', 'dry') # Set mode to 'dry' or 'flight' to use manipulator/centralised jacobian
         self.declare_parameter('verbose', False)
-        self.declare_parameter('start_active', False) # Set to True to start the node in active mode
         self.verbose = self.get_parameter('verbose').get_parameter_value().bool_value
 
         # Data
@@ -38,53 +37,54 @@ class InverseDifferentialKinematics(Node):
         self.forward_kinematics = np.array([0., 0., 0., 0., 0., 0.]) # XYZ, YPR, forward kinematics of the system
         # Subscribers
         # Create subscriptions related to flight
+        self.get_logger().info(f"Inverse kinematics mode: {self.get_parameter('mode').get_parameter_value().string_value}")
         if self.get_parameter('mode').get_parameter_value().string_value == 'flight':
+            self.get_logger().info(f'Creating body angle and velocity states')
             self.state_position_subscription = self.create_subscription(
                 Vector3Stamped,
-                '/state/body_angles',
+                '/state/body_angles', # Does not make sense (y and z not zero)
                 self.state_body_angles_callback,
                 10)
             self.state_linear_velocity_subscription = self.create_subscription(
                 Vector3Stamped,
-                '/state/body_velocity',
+                '/state/body_velocity', # Does not exist, no publisher
                 self.state_body_velocity_callback,
                 10)
         # Create subscriptions related to manipulator
         self.joint_subscription = self.create_subscription(
             JointState,
-            '/servo/out/state',
+            '/servo/out/state', # Publishes something, seems correct
             self.state_joint_callback,
             10)
         self.reference_ee_velocity_subscription = self.create_subscription(
             TwistStamped,
-            '/references/ee_velocity',
+            '/references/ee_velocity', # Publishes something, seems correct
             self.reference_ee_velocity_callback,
             10)
 
-        # Publishers
+        # Publishers -- output
         if self.get_parameter('mode').get_parameter_value().string_value == 'flight':
             self.reference_linear_velocity_publisher = self.create_publisher(
                 TwistStamped,
-                '/references/body_velocities',
+                '/references/body_velocities', # published nothing on this topic
                 10)
         self.reference_joint_velocity_publisher = self.create_publisher(
             JointState,
-            '/servo/in/references/joint_references',
+            '/servo/in/references/joint_references', # published nothing on this topic
             10)
 
         self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
         self.period = 1.0/self.frequency # seconds
         if self.get_parameter('mode').get_parameter_value().string_value == 'dry':
+            self.get_logger().info("Dry version inverse kinematics")
             self.jacobian = ManipulatorJacobian()
             self.timer = self.create_timer(self.period, self.timer_callback_dry)
         elif self.get_parameter('mode').get_parameter_value().string_value == 'flight':
-            self.jacobian = CentralisedJacobian()
+            self.get_logger().info("Flight version inverse kinematics")
+            self.jacobian = CentralisedJacobian('linear')
             self.timer = self.create_timer(self.period, self.timer_callback_flight)
         else:
             raise ValueError('Invalid mode parameter. Set mode to "dry" or "flight')
-        
-        # Activation mechanism
-        self.activation_srv = self.create_service(SetBool, 'activate_inverse_kinematics', self.activate_callback)
     
     def timer_callback_dry(self):
         # Set the state
@@ -134,16 +134,17 @@ class InverseDifferentialKinematics(Node):
         
         # Create messages
         reference_body_rates = TwistStamped()
-        reference_body_rates.twist.linear.x = 0.0 # The x velocity is uncontrolled
-        reference_body_rates.twist.linear.y = 0.0 # The y velocity is uncontrolled
-        reference_body_rates.twist.linear.z = ref_state_velocities[0]  # Z velocity
-        reference_body_rates.twist.angular.z = ref_state_velocities[1] # Yaw rate
-        reference_body_rates.twist.angular.y = ref_state_velocities[2] # Pitch rate
-        reference_body_rates.twist.angular.x = ref_state_velocities[3] # Roll rate
-        reference_joint_velocity = Vector3Stamped()
-        reference_joint_velocity.vector.x = ref_state_velocities[4] # q1 velocity
-        reference_joint_velocity.vector.y = ref_state_velocities[5] # q2 velocity
-        reference_joint_velocity.vector.z = ref_state_velocities[6] # q3 velocity
+        reference_body_rates.twist.linear.x = ref_state_velocities[0] # The x velocity is uncontrolled
+        reference_body_rates.twist.linear.y = ref_state_velocities[1] # The y velocity is uncontrolled
+        reference_body_rates.twist.linear.z = ref_state_velocities[2]  # Z velocity
+        reference_body_rates.twist.angular.z = ref_state_velocities[4]
+        reference_body_rates.twist.angular.y = 0.0 # Pitch rate
+        reference_body_rates.twist.angular.x = 0.0 # Roll rate
+        reference_joint_velocity = JointState()
+        reference_joint_velocity.name = ['q1', 'q2', 'q3']
+        reference_joint_velocity.position = [0.0, 0.0, 0.0]
+        reference_joint_velocity.velocity = [ref_state_velocities[4], ref_state_velocities[5], ref_state_velocities[6]] # q3 velocity
+        reference_joint_velocity.effort = [0.0, 0.0, 0.0]
 
         # Get timestamp
         timestamp = self.get_clock().now().to_msg()
@@ -192,9 +193,9 @@ class InverseDifferentialKinematics(Node):
         self.state_joint_velocity_[2] = msg.velocity[2] # q3
     
     def state_body_velocity_callback(self, msg):
-        self.state_body_angular_velocity_[0] = msg.twist.angular.z # Yaw
-        self.state_body_angular_velocity_[1] = msg.twist.angular.y # Pitch
-        self.state_body_angular_velocity_[2] = msg.twist.angular.x # Roll
+        self.state_body_angular_velocity_[0] = msg.vector.z # Yaw
+        self.state_body_angular_velocity_[1] = msg.vector.y # Pitch
+        self.state_body_angular_velocity_[2] = msg.vector.x # Roll
     
     ''' Receive EE velocity reference in contact frame 
     And rotate to world frame

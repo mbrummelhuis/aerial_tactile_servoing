@@ -45,8 +45,12 @@ class CentralisedJacobian():
     jacobian[5,8]=-((-sin(pitch)*sin(q_2)*sin(q_3) + sin(q_3)*cos(pitch)*cos(q_2)*cos(q_1 + roll) + sin(q_1 + roll)*cos(pitch)*cos(q_3))*(sin(pitch)*sin(q_2)*sin(q_3) - sin(q_3)*cos(pitch)*cos(q_2)*cos(q_1 + roll) - sin(q_1 + roll)*cos(pitch)*cos(q_3))/((-sin(pitch)*sin(q_2)*sin(q_3) + sin(q_3)*cos(pitch)*cos(q_2)*cos(q_1 + roll) + sin(q_1 + roll)*cos(pitch)*cos(q_3))**2 + (sin(pitch)*sin(q_2)*cos(q_3) + sin(q_3)*sin(q_1 + roll)*cos(pitch) - cos(pitch)*cos(q_2)*cos(q_3)*cos(q_1 + roll))**2) + (-sin(pitch)*sin(q_2)*cos(q_3) - sin(q_3)*sin(q_1 + roll)*cos(pitch) + cos(pitch)*cos(q_2)*cos(q_3)*cos(q_1 + roll))*(sin(pitch)*sin(q_2)*cos(q_3) + sin(q_3)*sin(q_1 + roll)*cos(pitch) - cos(pitch)*cos(q_2)*cos(q_3)*cos(q_1 + roll))/((-sin(pitch)*sin(q_2)*sin(q_3) + sin(q_3)*cos(pitch)*cos(q_2)*cos(q_1 + roll) + sin(q_1 + roll)*cos(pitch)*cos(q_3))**2 + (sin(pitch)*sin(q_2)*cos(q_3) + sin(q_3)*sin(q_1 + roll)*cos(pitch) - cos(pitch)*cos(q_2)*cos(q_3)*cos(q_1 + roll))**2))*sin(pitch)
 
     # We set XY to be uncontrolled to allow obtaining body rate reference
-    J_G_controlled = jacobian[:,2:9]
-    J_G_uncontrolled = jacobian[:,0:2]
+    J_G_controlled_bodyrates = jacobian[:,2:9]
+    J_G_controlled_bodyvels = Matrix.hstack(jacobian[:,0:4], jacobian[:, 6:9])
+    J_G_uncontrolled_bodyrates = jacobian[:,0:2]
+    J_G_uncontrolled_bodyvels = jacobian[:,4:6]
+
+
 
     # Transformation between euler angle time derivatives and angular velocity
     T_euler = Matrix([[0, -sin(yaw), cos(yaw)*cos(pitch)],
@@ -58,12 +62,16 @@ class CentralisedJacobian():
     
     R_Ie = Matrix([[-(sin(pitch)*sin(roll)*cos(yaw) - sin(yaw)*cos(roll))*sin(q_1)*sin(q_2) + (sin(pitch)*cos(roll)*cos(yaw) + sin(roll)*sin(yaw))*sin(q_2)*cos(q_1) - cos(pitch)*cos(q_2)*cos(yaw), (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))*(sin(pitch)*cos(roll)*cos(yaw) + sin(roll)*sin(yaw)) + (sin(pitch)*sin(roll)*cos(yaw) - sin(yaw)*cos(roll))*(-sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3)) + sin(q_2)*sin(q_3)*cos(pitch)*cos(yaw), (sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*(sin(pitch)*cos(roll)*cos(yaw) + sin(roll)*sin(yaw)) + (sin(pitch)*sin(roll)*cos(yaw) - sin(yaw)*cos(roll))*(sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1)) - sin(q_2)*cos(pitch)*cos(q_3)*cos(yaw)], [-(sin(pitch)*sin(roll)*sin(yaw) + cos(roll)*cos(yaw))*sin(q_1)*sin(q_2) + (sin(pitch)*sin(yaw)*cos(roll) - sin(roll)*cos(yaw))*sin(q_2)*cos(q_1) - sin(yaw)*cos(pitch)*cos(q_2), (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))*(sin(pitch)*sin(yaw)*cos(roll) - sin(roll)*cos(yaw)) + (sin(pitch)*sin(roll)*sin(yaw) + cos(roll)*cos(yaw))*(-sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3)) + sin(q_2)*sin(q_3)*sin(yaw)*cos(pitch), (sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*(sin(pitch)*sin(yaw)*cos(roll) - sin(roll)*cos(yaw)) + (sin(pitch)*sin(roll)*sin(yaw) + cos(roll)*cos(yaw))*(sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1)) - sin(q_2)*sin(yaw)*cos(pitch)*cos(q_3)], [sin(pitch)*cos(q_2) - sin(q_1)*sin(q_2)*sin(roll)*cos(pitch) + sin(q_2)*cos(pitch)*cos(q_1)*cos(roll), (sin(q_1)*cos(q_3) + sin(q_3)*cos(q_1)*cos(q_2))*cos(pitch)*cos(roll) + (-sin(q_1)*sin(q_3)*cos(q_2) + cos(q_1)*cos(q_3))*sin(roll)*cos(pitch) - sin(pitch)*sin(q_2)*sin(q_3), (sin(q_1)*sin(q_3) - cos(q_1)*cos(q_2)*cos(q_3))*cos(pitch)*cos(roll) + (sin(q_1)*cos(q_2)*cos(q_3) + sin(q_3)*cos(q_1))*sin(roll)*cos(pitch) + sin(pitch)*sin(q_2)*cos(q_3)]])
 
-    def __init__(self):
+    def __init__(self, mode='linear'):
         self.jfunc = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.jacobian, modules='numpy')
 
-        self.J_G_controlled_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.J_G_controlled, modules='numpy')
-        self.J_G_uncontrolled_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.J_G_uncontrolled, modules='numpy')
-
+        if mode=='angular':
+            self.J_G_controlled_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.J_G_controlled_bodyrates, modules='numpy')
+            self.J_G_uncontrolled_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.J_G_uncontrolled_bodyrates, modules='numpy')
+        elif mode=='linear':
+            self.J_G_controlled_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.J_G_controlled_bodyvels, modules='numpy')
+            self.J_G_uncontrolled_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.J_G_uncontrolled_bodyvels, modules='numpy')
+        
         self.T_A_func = lambdify((self.yaw, self.pitch), self.T_A, modules='numpy')
 
         self.R_Ie_func = lambdify((self.yaw, self.pitch, self.roll, self.q_1, self.q_2, self.q_3), self.R_Ie, modules='numpy')

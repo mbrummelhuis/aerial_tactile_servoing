@@ -84,8 +84,7 @@ def generate_launch_description():
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
             {'mode': 'flight'}, # Set to 'flight to enable flight testing'
-            {'verbose': False},
-            {'start_active': False}
+            {'verbose': False}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )

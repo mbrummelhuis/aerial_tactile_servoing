@@ -60,10 +60,9 @@ class MissionDirectorPy(Node):
         # GZ subscribers
         self.subscriber_joint_states = self.create_subscription(
             JointState,
-            '/joint_states',
+            '/servo/out/state',
             self.joint_states_callback,
-            10
-        )
+            10)
         
         # Subscribe to manual input
         self.subscriber_input_state = self.create_subscription(
@@ -75,6 +74,16 @@ class MissionDirectorPy(Node):
             TwistStamped,
             '/sensors/tactip',
             self.tactip_callback,
+            10)
+        self.subscriber_servo_velocity = self.create_subscription(
+            JointState,
+            '/servo/in/references/joint_references',
+            self.servo_velocity_callback,
+            10)
+        self.subscriber_body_velocity_callback = self.create_subscription(
+            TwistStamped,
+            '/references/body_velocities',
+            self.body_velocity_callback,
             10)
 
         # Initialize tactip data to zero
@@ -107,6 +116,7 @@ class MissionDirectorPy(Node):
         self.state_start_time = datetime.datetime.now()
         self.armed = False
         self.offboard = False
+        self.tactile_servoing = False
         self.hover_time = self.get_parameter('hover_time').get_parameter_value().double_value
         self.takeoff_altitude = self.get_parameter('takeoff_altitude').get_parameter_value().double_value
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
@@ -131,17 +141,33 @@ class MissionDirectorPy(Node):
     def timer_callback(self):
         match self.FSM_state:
             case('entrypoint'): # Entry point - wait for position fix
+                if self.first_state_loop:
+                    self.get_logger().info("Waiting for position fix")
+                    self.first_state_loop = False
+
                 self.x_setpoint = self.vehicle_local_position.x
                 self.y_setpoint = self.vehicle_local_position.y
-                self.get_logger().info("Waiting for position fix")
-                self.publishOffboardControlMode()
+                self.publishOffboardPositionMode()
                 if self.x_setpoint != 0.0 and self.y_setpoint != 0.0:
                     self.state_start_time = datetime.datetime.now()
+                    self.first_state_loop = False
                     self.get_logger().info(f"Got position fix X: {self.x_setpoint} Y: {self.y_setpoint}")
+                    self.FSM_state = 'move arm landed'
+            case('move arm landed'):
+                done = self.move_arm_to_position(1.578, 0.0, 2.10)
+                if done:
+                    done = False
+                    self.get_logger().info("Done moving arm into takeoff position")
+                    self.state_start_time = datetime.datetime.now()
                     self.FSM_state = 'wait'
 
             case('wait'):
-                if (datetime.datetime.now() - self.state_start_time).seconds > 3:
+                if self.first_state_loop:
+                    self.get_logger().info(f"Waiting")
+                    self.first_state_loop = False
+
+                if (datetime.datetime.now() - self.state_start_time).seconds > 1:
+                    self.first_state_loop = True
                     self.state_start_time = datetime.datetime.now()
                     self.FSM_state = 'disarmed'
 
@@ -149,19 +175,19 @@ class MissionDirectorPy(Node):
                 self.engage_offboard_mode()
                 self.armVehicle()
                 self.get_logger().info("Arming and going to offboard")
-                self.publishOffboardControlMode()
+                self.publishOffboardPositionMode()
                 if self.armed and self.offboard:
                     self.get_logger().info("Taking off")
                     self.FSM_state = 'takeoff'
-
+            
             case('takeoff'): # Takeoff - wait for takeoff altitude
                 # get current vehicle altitude
                 current_altitude = self.vehicle_local_position.z
 
                 # create and publish setpoint message
-                self.publishOffboardControlMode()
+                self.publishOffboardPositionMode()
                 # send takeoff command
-                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 
                 # check if vehicle has reached takeoff altitude
                 if abs(current_altitude)+0.1 > abs(self.takeoff_altitude) and not self.input_state==1:
@@ -175,25 +201,26 @@ class MissionDirectorPy(Node):
             
             case('hover'):
                 # create and publish setpoint message
-                self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
+                self.publishOffboardPositionMode()
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
-                    self.get_logger().info(f'Hovered for {self.hover_time} seconds -- landing')
-                    self.FSM_state = 'move arm'
+                    self.get_logger().info(f'Hovered for {self.hover_time} seconds -- moving arm')
+                    self.FSM_state = 'move arm hover'
                     self.state_start_time = datetime.datetime.now()
 
-            case('move arm'):
-                self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
+            case('move arm hover'):
+                self.publishOffboardPositionMode()
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 done = self.move_arm_to_position(1.0, 0.0, -0.578)
                 if done:
+                    self.get_logger().info("Finished moving arm into tactile servoing position")
                     self.state_start_time = datetime.datetime.now()
                     self.FSM_state = 'wait_for_contact'
 
             case('wait_for_contact'):
-                self.publishOffboardControlMode()
-                self.publishTrajectorySetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
+                self.publishOffboardPositionMode()
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 if self.first_state_loop:
                     self.get_logger().info('Waiting for contact')
                     self.first_state_loop = False
@@ -205,20 +232,21 @@ class MissionDirectorPy(Node):
                 if (self.tactip_data.twist.linear.z) < -2.0 or self.input_state == 1:
                     self.input_state = 0
                     self.get_logger().info(f"Contact detected -- activating IK")
-                    self.activate_ik()
-                    self.get_logger().info('Contact detected, IK activated -- switching to tactile servoing')
+                    self.tactile_servoing = True
                     self.FSM_state = 'tactile_servoing'
                     self.state_start_time = datetime.datetime.now()
                     self.first_state_loop = True # Reset first state loop flag
 
             case('tactile_servoing'):
+                self.tactile_servoing = True
+                self.publishOffboardVelocityMode()
                 if self.first_state_loop:
                     self.get_logger().info('Tactile servoing')
                     self.first_state_loop = False
 
                 # Transition    
-                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=30.):
-                    self.deactivate_ik()
+                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=600.):
+                    self.tactile_servoing = False
                     self.get_logger().info(f"Waited for 30 seconds and IK deactivated -- switching to end")
                     self.FSM_state = 'land'
                     self.state_start_time = datetime.datetime.now()
@@ -229,7 +257,7 @@ class MissionDirectorPy(Node):
                 # Calculate next landing altitude (plus because z down positive)
                 next_landing_altitude = self.vehicle_local_position.z + self.landing_velocity*self.timer_period
                 # create and publish setpoint message
-                self.publishOffboardControlMode()
+                self.publishOffboardPositionMode()
                 self.land()
                 if abs(self.previous_next_landing_altitude - next_landing_altitude) < 0.001:
                     self.get_logger().info('Landed')
@@ -262,30 +290,6 @@ class MissionDirectorPy(Node):
         #self.get_logger().info(f'Tactip data: {msg}')
         self.tactip_data = msg
 
-    def activate_ik(self):
-        self.ik_req.data = True
-        self.future = self.ik_client.call_async(self.ik_req)
-        self.future.add_done_callback(self.activate_ik_callback)
-
-        self.get_logger().info('Waiting for IK service call to complete')
-
-    def activate_ik_callback(self, future):
-        response = future.result()
-        self.get_logger().info('Service call completed -- IK active')
-        self.ik_active = True
-
-    def deactivate_ik(self):
-        self.ik_req.data = False
-        self.future = self.ik_client.call_async(self.ik_req)
-        self.future.add_done_callback(self.deactivate_ik_callback)
-
-        self.get_logger().info('Waiting for IK service call to complete')
-
-    def deactivate_ik_callback(self, future):
-        response = future.result()
-        self.get_logger().info('Service call completed -- IK deactivated')
-        self.ik_active = False
-
     def move_arm_to_position(self, pos1, pos2, pos3):
         error1 = pos1-self.arm_positions[0]
         error2 = pos2-self.arm_positions[1]
@@ -294,13 +298,15 @@ class MissionDirectorPy(Node):
         vel2 = self.kp*(error2) - self.kd*self.arm_velocities[1]
         vel3 = self.kp*(error3) - self.kd*self.arm_velocities[2]
         self.publish_arm_velocity_commands(vel1, vel2, vel3)
-        if(error1 < 0.001 and error2 < 0.001 and error3 < 0.001):
+
+        if(abs(error1) < 0.001 and abs(error2) < 0.001 and abs(error3) < 0.001):
             self.publish_arm_velocity_commands(0.0, 0.0, 0.0)
+            self.get_logger().info(f"Done moving arm to {pos1}, {pos2}, {pos3}")
             return True
         else:
             return False
 
-    def publishOffboardControlMode(self):
+    def publishOffboardPositionMode(self):
         msg = OffboardControlMode()
         msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
         msg.position = True
@@ -309,13 +315,30 @@ class MissionDirectorPy(Node):
         msg.attitude = False
         msg.body_rate = False
         self.publisher_offboard_control_mode.publish(msg)
-    
-    def publishTrajectorySetpoint(self, x, y, z, yaw):
+    def publishOffboardVelocityMode(self):
+        msg = OffboardControlMode()
+        msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
+        msg.position = False
+        msg.velocity = True
+        msg.acceleration = False
+        msg.attitude = False
+        msg.body_rate = False
+        self.publisher_offboard_control_mode.publish(msg)
+
+    def publishTrajectoryPositionSetpoint(self, x, y, z, yaw):
         msg = TrajectorySetpoint()
         msg.position[0] = x
         msg.position[1] = y
         msg.position[2] = z
         msg.yaw = yaw
+        msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
+        self.publisher_vehicle_trajectory_setpoint.publish(msg)
+    def publishTrajectoryVelocitySetpoint(self, vx, vy, vz, yawspeed):
+        msg = TrajectorySetpoint()
+        msg.velocity[0] = vx
+        msg.velocity[1] = vy
+        msg.velocity[2] = vz
+        msg.yawspeed = yawspeed
         msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
         self.publisher_vehicle_trajectory_setpoint.publish(msg)
 
@@ -393,6 +416,18 @@ class MissionDirectorPy(Node):
         self.arm_velocities[0] = msg.velocity[0] # Pivot
         self.arm_velocities[1] = msg.velocity[1] # Shoulder
         self.arm_velocities[2] = msg.velocity[2] # Elbow
+    
+    def servo_velocity_callback(self, msg):
+        # Forward the servo velocity message to the proper topic
+        if self.tactile_servoing:
+            self.get_logger().info(f'Got servo velocity: {msg.velocity[0]}, {msg.velocity[1]}, {msg.velocity[2]}')
+            self.publish_arm_velocity_commands(msg.velocity[0], msg.velocity[1], msg.velocity[2])
+
+    def body_velocity_callback(self, msg):
+        if self.tactile_servoing:
+            self.get_logger().info(f'Got body velocity: {msg.twist.linear.x}, {msg.twist.linear.y}, {msg.twist.linear.z}, {msg.twist.angular.z}')
+            self.publishTrajectoryVelocitySetpoint(msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z, msg.twist.angular.z)
+
 
 def main():
     rclpy.init(args=None)
