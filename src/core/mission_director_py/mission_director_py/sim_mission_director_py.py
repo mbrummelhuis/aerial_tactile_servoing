@@ -11,11 +11,8 @@ from geometry_msgs.msg import TwistStamped
 
 from sensor_msgs.msg import JointState
 
-from std_srvs.srv import SetBool
-
-from feetech_ros2.srv import SetMode
-
 from px4_msgs.msg import VehicleStatus
+from px4_msgs.msg import VehicleOdometry
 from px4_msgs.msg import VehicleLocalPosition
 from px4_msgs.msg import TrajectorySetpoint
 from px4_msgs.msg import OffboardControlMode
@@ -46,17 +43,26 @@ class MissionDirectorPy(Node):
         self.publisher_vehicle_command = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', 10)
 
         # PX4 subscribers
-        self.subscriber_vehicle_status = self.create_subscription(
-            VehicleStatus, 
-            '/fmu/out/vehicle_status', 
-            self.vehicle_status_callback, 
+        #self.subscriber_vehicle_status = self.create_subscription(
+        #    VehicleStatus, 
+        #    '/fmu/out/vehicle_status', 
+        #    self.vehicle_status_callback, 
+        #    qos_profile)
+        self.subscriber_vehicle_odometry = self.create_subscription(
+            VehicleOdometry, 
+            '/fmu/out/vehicle_odometry', 
+            self.vehicle_odometry_callback, 
             qos_profile)
         self.subscriber_vehicle_local_position = self.create_subscription(
-            VehicleLocalPosition, 
-            '/fmu/out/vehicle_local_position', 
-            self.vehicle_local_position_callback, 
-            qos_profile)
+            VehicleLocalPosition,
+            '/fmu/out/vehicle_local_position',
+            self.vehicle_local_position_callback,
+            qos_profile
+        )
         
+        # Controller subscriber
+        self.subscriber_controller = self.create_subscription(TrajectorySetpoint, '/controller/out/trajectory_setpoint', self.controller_callback, 10)
+        self.subscriber_controller_servo = self.create_subscription(JointState, '/controller/out/servo_positions', self.controller_servo_callback, 10)
         # GZ subscribers
         self.subscriber_joint_states = self.create_subscription(
             JointState,
@@ -75,16 +81,6 @@ class MissionDirectorPy(Node):
             '/sensors/tactip',
             self.tactip_callback,
             10)
-        self.subscriber_servo_velocity = self.create_subscription(
-            JointState,
-            '/servo/in/references/joint_references',
-            self.servo_velocity_callback,
-            10)
-        self.subscriber_body_velocity_callback = self.create_subscription(
-            TwistStamped,
-            '/references/body_velocities',
-            self.body_velocity_callback,
-            10)
 
         # Initialize tactip data to zero
         self.tactip_data = TwistStamped()
@@ -95,19 +91,10 @@ class MissionDirectorPy(Node):
         self.tactip_data.twist.angular.y = 0.0
         self.tactip_data.twist.angular.z = 0.0
         
-
         # Arms publishers
         self.publisher_pivot_vel = self.create_publisher(Float64, '/shoulder_1_vel_cmd', 10)
         self.publisher_shoulder_vel = self.create_publisher(Float64, '/elbow_1_vel_cmd', 10)
         self.publisher_elbow_vel = self.create_publisher(Float64, '/forearm_1_vel_cmd', 10)
-
-        # IK activation server
-        #self.ik_client = self.create_client(SetBool, 'activate_inverse_kinematics')
-        #self.ik_req = SetBool.Request()
-        #self.ik_active = False
-
-        #while not self.ik_client.wait_for_service(timeout_sec=1.0): # and not self.mode_client.wait_for_service(timeout_sec=1.0):
-        #    self.get_logger().info('services not available, waiting again...')
 
         # set initial state
         self.FSM_state = 'entrypoint'
@@ -129,7 +116,11 @@ class MissionDirectorPy(Node):
 
         # Initialize vehicle data
         self.vehicle_status = VehicleStatus()
+        self.vehicle_odometry = VehicleOdometry()
         self.vehicle_local_position = VehicleLocalPosition()
+        self.vehicle_trajectory_setpoint = TrajectorySetpoint()
+
+        self.servo_reference = JointState()
 
         # Simulation stuff
         self.servo_position = True
@@ -231,7 +222,7 @@ class MissionDirectorPy(Node):
                 # If contact depth is greater than 1.0 mm, we assume contact.
                 if (self.tactip_data.twist.linear.z) < -2.0 or self.input_state == 1:
                     self.input_state = 0
-                    self.get_logger().info(f"Contact detected -- activating IK")
+                    self.get_logger().info(f"Contact detected -- Tactile servoing")
                     self.tactile_servoing = True
                     self.FSM_state = 'tactile_servoing'
                     self.state_start_time = datetime.datetime.now()
@@ -239,8 +230,12 @@ class MissionDirectorPy(Node):
 
             case('tactile_servoing'):
                 self.tactile_servoing = True
-                self.publishOffboardVelocityMode()
-                #self.publishTrajectoryVelocitySetpoint(0.0, 0.0, 0.0, 0.5)
+                self.publishOffboardPositionMode()
+                self.publishTrajectoryPositionSetpoint(
+                    self.vehicle_trajectory_setpoint.position[0], 
+                    self.vehicle_trajectory_setpoint.position[1], 
+                    self.vehicle_trajectory_setpoint.position[2], 
+                    self.vehicle_trajectory_setpoint.yaw)
                 if self.first_state_loop:
                     self.get_logger().info('Tactile servoing')
                     self.first_state_loop = False
@@ -248,7 +243,7 @@ class MissionDirectorPy(Node):
                 # Transition    
                 if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=600.):
                     self.tactile_servoing = False
-                    self.get_logger().info(f"Waited for 30 seconds and IK deactivated -- switching to end")
+                    self.get_logger().info(f"Waited for 600 seconds -- switching to land")
                     self.FSM_state = 'land'
                     self.state_start_time = datetime.datetime.now()
                     self.first_state_loop = True # Reset first state loop flag
@@ -269,7 +264,6 @@ class MissionDirectorPy(Node):
             case('landed'):
                 self.get_logger().info('Done')
                 pass               
-
     
     def publish_arm_position_commands(self, q1, q2, q3):
         pass
@@ -290,6 +284,14 @@ class MissionDirectorPy(Node):
     def tactip_callback(self, msg):
         #self.get_logger().info(f'Tactip data: {msg}')
         self.tactip_data = msg
+
+    def controller_callback(self, msg):
+        self.vehicle_trajectory_setpoint = msg
+    
+    def controller_servo_callback(self, msg):
+        self.servo_reference = msg
+        if self.tactile_servoing:
+            self.publish_arm_position_commands(msg.position[0], msg.position[1], msg.position[2])
 
     def move_arm_to_position(self, pos1, pos2, pos3):
         epsilon = 0.01
@@ -318,15 +320,6 @@ class MissionDirectorPy(Node):
         msg.attitude = False
         msg.body_rate = False
         self.publisher_offboard_control_mode.publish(msg)
-    def publishOffboardVelocityMode(self):
-        msg = OffboardControlMode()
-        msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
-        msg.position = False
-        msg.velocity = True
-        msg.acceleration = False
-        msg.attitude = False
-        msg.body_rate = False
-        self.publisher_offboard_control_mode.publish(msg)
 
     def publishTrajectoryPositionSetpoint(self, x, y, z, yaw):
         msg = TrajectorySetpoint()
@@ -334,14 +327,6 @@ class MissionDirectorPy(Node):
         msg.position[1] = y
         msg.position[2] = z
         msg.yaw = yaw
-        msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
-        self.publisher_vehicle_trajectory_setpoint.publish(msg)
-    def publishTrajectoryVelocitySetpoint(self, vx, vy, vz, yawspeed):
-        msg = TrajectorySetpoint()
-        msg.velocity[0] = vx
-        msg.velocity[1] = vy
-        msg.velocity[2] = vz
-        msg.yawspeed = yawspeed
         msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
         self.publisher_vehicle_trajectory_setpoint.publish(msg)
 
@@ -403,8 +388,11 @@ class MissionDirectorPy(Node):
         else:
             self.offboard=False
 
+    def vehicle_odometry_callback(self, msg):
+        self.get_logger().debug(f'Received vehicle_odometry: {msg.position[2]}')
+        self.vehicle_odometry = msg
+    
     def vehicle_local_position_callback(self, msg):
-        self.get_logger().debug(f'Received vehicle_local_position: {msg.z}')
         self.vehicle_local_position = msg
     
     def input_state_callback(self, msg):
@@ -419,17 +407,6 @@ class MissionDirectorPy(Node):
         self.arm_velocities[0] = msg.velocity[0] # Pivot
         self.arm_velocities[1] = msg.velocity[1] # Shoulder
         self.arm_velocities[2] = msg.velocity[2] # Elbow
-    
-    def servo_velocity_callback(self, msg):
-        # Forward the servo velocity message to the proper topic
-        if self.tactile_servoing:
-            self.get_logger().info(f'Got servo velocity: {msg.velocity[0]}, {msg.velocity[1]}, {msg.velocity[2]}')
-            self.publish_arm_velocity_commands(msg.velocity[0], msg.velocity[1], msg.velocity[2])
-
-    def body_velocity_callback(self, msg):
-        if self.tactile_servoing:
-            self.get_logger().info(f'Got body velocity: {msg.twist.linear.x}, {msg.twist.linear.y}, {msg.twist.linear.z}, {msg.twist.angular.z}')
-            self.publishTrajectoryVelocitySetpoint(msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z, msg.twist.angular.z)
 
 
 def main():

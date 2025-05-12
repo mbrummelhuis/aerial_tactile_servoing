@@ -1,6 +1,8 @@
 import rclpy
 from rclpy.node import Node
 
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+
 import numpy as np
 
 from scipy.optimize import minimize
@@ -16,32 +18,44 @@ class PoseBasedATS(Node):
 
         # Parameters
         self.declare_parameter('frequency', 10.)
-        self.declare_parameter('reference pose', [0., 0., 0.])
+        self.declare_parameter('reference_pose', [0., 0., 0.])
         self.declare_parameter('Kp', 3.0)
         self.declare_parameter('Ki', 0.1)
-        self.declare_parameter('windup clip', 10.)
+        self.declare_parameter('windup_clip', 10.)
         self.Kp = self.get_parameter('Kp').get_parameter_value().double_value
         self.Ki = self.get_parameter('Ki').get_parameter_value().double_value
-        self.windup = self.get_parameter('windup clip').get_parameter_value().double_value
+        self.windup = self.get_parameter('windup_clip').get_parameter_value().double_value
+
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
 
         # Subscribers
         self.subscription_tactip = self.create_subscription(TwistStamped, '/sensors/tactip', self.callback_tactip, 10)
         self.subscription_servos = self.create_subscription(JointState, '/servo/out/state', self.callback_servo, 10)
-        self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.callback_fmu, 10)
+        self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.callback_fmu, qos_profile)
 
         # Publishers
         self.publisher_reference_sensor_pose = self.create_publisher(TwistStamped, '/references/ee_velocity', 10)
-        self.publisher_servo_positions = self.create_publisher(JointState, '/servo/in/reference', 10)
+        self.publisher_servo_positions = self.create_publisher(JointState, '/controller/out/servo_positions', 10)
         self.publisher_drone_ref = self.create_publisher(TrajectorySetpoint, '/controller/out/trajectory_setpoint', 10)
 
         # Data
         self.P_SC = np.zeros((4,4))
+        reference_pose = self.get_parameter('reference_pose').get_parameter_value().double_array_value
+        if len(reference_pose) != 3:
+            self.get_logger().error("Parameter 'reference_pose' must be a list of 3 elements.")
+            return
         self.P_Cref = self.evaluate_P_SC(
-            self.get_parameter('reference pose').get_parameter_value().double_array_value[0],
-            self.get_parameter('reference pose').get_parameter_value().double_array_value[1],
-            self.get_parameter('reference pose').get_parameter_value().double_array_value[2])
+            reference_pose[0],
+            reference_pose[1],
+            reference_pose[2])
         self.tactip = TwistStamped()
         self.servo_state = JointState()
+        self.servo_state.position = [0., 0., 0.]
         self.vehicle_odometry = VehicleOdometry()
 
         # Timer
@@ -60,7 +74,7 @@ class PoseBasedATS(Node):
 
         U_SS = self.vector_to_transformation(u_ss)
 
-        P_S = self.forward_kinematics()
+        P_S = self.forward_kinematics(self.get_state())
         P_Sref = P_S @ U_SS
 
         # Publish the corrected reference sensor pose in inertial frame in vector form
@@ -78,10 +92,11 @@ class PoseBasedATS(Node):
         self.publisher_reference_sensor_pose.publish(msg)
 
         # Inverse kinematics
+
         result = self.inverse_kinematics(P_Sref)
         state_reference = result[0]
         if result[1]==True:
-            self.get_logger().info(f"IK optimization converged with value {result[3]}")
+            self.get_logger().debug(f"IK optimization converged with value {result[3]}")
             msg = TrajectorySetpoint()
             msg.position[0] = state_reference[0]
             msg.position[1] = state_reference[1]
@@ -91,9 +106,7 @@ class PoseBasedATS(Node):
 
             msg = JointState()
             msg.name = ['q1', 'q2', 'q3']
-            msg.position[0] = state_reference[6]
-            msg.position[1] = state_reference[7]
-            msg.position[2] = state_reference[8]
+            msg.position = [state_reference[6], state_reference[7], state_reference[8]]
             msg.header.stamp = self.get_clock().now().to_msg()
             self.publisher_servo_positions.publish(msg)
 
@@ -133,19 +146,28 @@ class PoseBasedATS(Node):
 
     ''' Get HTM describing end-effector (sensor) pose in inertial frame, evaluated at latest state
     '''
-    def forward_kinematics(self):
-        x_B = self.vehicle_odometry.position[0]
-        y_B = self.vehicle_odometry.position[1]
-        z_B = self.vehicle_odometry.position[2]
+    def forward_kinematics(self, state):
+        x_B = state[0]
+        y_B = state[1]
+        z_B = state[2]
+        roll = state[3]
+        pitch = state[4]
+        yaw = state[5]
+        q_1 = state[6]
+        q_2 = state[7]
+        q_3 = state[8]
+        # x_B = self.vehicle_odometry.position[0]
+        # y_B = self.vehicle_odometry.position[1]
+        # z_B = self.vehicle_odometry.position[2]
         
-        euler = self.quaternion_to_euler(self.vehicle_odometry.q)
-        roll = euler[0]
-        pitch = euler[1]
-        yaw = euler[2]
+        # euler = self.quaternion_to_euler(self.vehicle_odometry.q)
+        # roll = euler[0]
+        # pitch = euler[1]
+        # yaw = euler[2]
 
-        q_1 = self.servo_state.position[0]
-        q_2 = self.servo_state.position[1]
-        q_3 = self.servo_state.position[2]
+        # q_1 = self.servo_state.position[0]
+        # q_2 = self.servo_state.position[1]
+        # q_3 = self.servo_state.position[2]
 
         P_S = np.zeros((4,4))
         P_S[0,0] = -(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_2) + np.cos(yaw)*np.cos(q_2)*np.cos(pitch)
@@ -167,6 +189,20 @@ class PoseBasedATS(Node):
 
         return P_S
     
+    def get_state(self):
+        euler = self.quaternion_to_euler(self.vehicle_odometry.q)
+        current_state = np.array([
+            self.vehicle_odometry.position[0],
+            self.vehicle_odometry.position[0],
+            self.vehicle_odometry.position[0],
+            euler[0],
+            euler[1],
+            euler[2],
+            self.servo_state.position[0],
+            self.servo_state.position[1],
+            self.servo_state.position[2]
+        ])
+        return current_state
     # Auxiliary functions
     ''' Get rotation matrix corresponding to wxyz quaternion
     '''
@@ -197,10 +233,12 @@ class PoseBasedATS(Node):
         pass
 
     def rotmat_to_euler(self,rotmat):
-        euler = np.array(3)
+        euler = np.zeros(3)
         euler[0] = np.arctan2(rotmat[1,0], rotmat[0,0])
         euler[1] = -np.arcsin(rotmat[2,0])
-        euler[2] = np.arctan2(rotmat[2,1], rotmat[2,2])        
+        euler[2] = np.arctan2(rotmat[2,1], rotmat[2,2])
+
+        return euler
 
     def euler_to_rotmat(self, euler):
         pass
@@ -212,7 +250,7 @@ class PoseBasedATS(Node):
         return self.rotmat_to_euler(rotmat)
 
     def transformation_to_vector(self, HTM):
-        vector = np.array(6)
+        vector = np.zeros(6)
         vector[0] = HTM[0,3]
         vector[1] = HTM[1,3]
         vector[2] = HTM[2,3]
@@ -236,23 +274,19 @@ class PoseBasedATS(Node):
         return HTM
 
     # Inverse kinematics stuff
-    ''' Returns a scalar pose error between two 4x4 homogeneous matrices.
-    '''
-    def pose_error(self, T1, T2, position_weight=1.0, orientation_weight=1.0):
+    def ik_objective(self, state, P_des, current_state, reg_weight=1e-3):
+        P_S = self.forward_kinematics(state)
+
         # Position error (Euclidean distance)
-        pos_err = np.linalg.norm(T1[:3, 3] - T2[:3, 3])
+        pos_err = np.linalg.norm(P_S[:3, 3] - P_des[:3, 3])
 
         # Orientation error (rotation angle difference)
-        R1 = T1[:3, :3]
-        R2 = T2[:3, :3]
+        R1 = P_S[:3, :3]
+        R2 = P_des[:3, :3]
         delta_R = R.from_matrix(R1.T @ R2)
         ang_err = np.linalg.norm(delta_R.as_rotvec())
 
-        return position_weight * pos_err**2 + orientation_weight * ang_err**2
-
-    def ik_objective(self, state, P_des, current_state, reg_weight=1e-3):
-        P_S = self.forward_kinematics(state)
-        error = self.pose_error(P_S, P_des)
+        error = pos_err**2 + ang_err**2
         regularization = reg_weight * np.linalg.norm(state - current_state)**2
         return error + regularization
 
@@ -263,26 +297,15 @@ class PoseBasedATS(Node):
         bounds = list(zip(lower_state_bounds, upper_state_bounds))
 
         # State
-        euler = self.quaternion_to_euler(self.vehicle_odometry.q)
-        current_state = np.array([
-            self.vehicle_odometry.position[0],
-            self.vehicle_odometry.position[0],
-            self.vehicle_odometry.position[0],
-            euler[0],
-            euler[1],
-            euler[2],
-            self.servo_state.position[0],
-            self.servo_state.position[1],
-            self.servo_state.position[2]
-        ])
+        current_state = self.get_state()
 
         result = minimize(
-            self.ik_objective,
-            current_state,
-            args=(self.forward_kinematics, P_des, current_state),
+            fun=self.ik_objective,
+            x0=current_state,
+            args=(P_des, current_state),
             bounds=bounds,
             method='SLSQP',
-            options={'ftol': 1e-6, 'disp': True}
+            options={'ftol': 1e-6, 'disp': False}
         )
         return result.x, result.success, result.message, result.fun
 
