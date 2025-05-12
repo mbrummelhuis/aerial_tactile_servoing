@@ -154,7 +154,7 @@ class MissionDirectorPy(Node):
                     self.get_logger().info(f"Got position fix X: {self.x_setpoint} Y: {self.y_setpoint}")
                     self.FSM_state = 'move arm landed'
             case('move arm landed'):
-                done = self.move_arm_to_position(1.578, 0.0, 2.10)
+                done = self.move_arm_to_position(1.578, 0.4, -2.10)
                 if done:
                     done = False
                     self.get_logger().info("Done moving arm into takeoff position")
@@ -212,7 +212,7 @@ class MissionDirectorPy(Node):
             case('move arm hover'):
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
-                done = self.move_arm_to_position(1.0, 0.0, -0.578)
+                done = self.move_arm_to_position(1.0, 0.0, 0.578)
                 if done:
                     self.get_logger().info("Finished moving arm into tactile servoing position")
                     self.state_start_time = datetime.datetime.now()
@@ -240,6 +240,7 @@ class MissionDirectorPy(Node):
             case('tactile_servoing'):
                 self.tactile_servoing = True
                 self.publishOffboardVelocityMode()
+                #self.publishTrajectoryVelocitySetpoint(0.0, 0.0, 0.0, 0.5)
                 if self.first_state_loop:
                     self.get_logger().info('Tactile servoing')
                     self.first_state_loop = False
@@ -291,6 +292,8 @@ class MissionDirectorPy(Node):
         self.tactip_data = msg
 
     def move_arm_to_position(self, pos1, pos2, pos3):
+        epsilon = 0.01
+
         error1 = pos1-self.arm_positions[0]
         error2 = pos2-self.arm_positions[1]
         error3 = pos3-self.arm_positions[2]
@@ -299,7 +302,7 @@ class MissionDirectorPy(Node):
         vel3 = self.kp*(error3) - self.kd*self.arm_velocities[2]
         self.publish_arm_velocity_commands(vel1, vel2, vel3)
 
-        if(abs(error1) < 0.001 and abs(error2) < 0.001 and abs(error3) < 0.001):
+        if(abs(error1) < epsilon and abs(error2) < epsilon and abs(error3) < epsilon):
             self.publish_arm_velocity_commands(0.0, 0.0, 0.0)
             self.get_logger().info(f"Done moving arm to {pos1}, {pos2}, {pos3}")
             return True
