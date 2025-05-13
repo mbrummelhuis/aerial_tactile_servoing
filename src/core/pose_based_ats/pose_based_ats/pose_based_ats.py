@@ -39,21 +39,29 @@ class PoseBasedATS(Node):
         self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.callback_fmu, qos_profile)
 
         # Publishers
-        self.publisher_reference_sensor_pose = self.create_publisher(TwistStamped, '/references/ee_velocity', 10)
+        self.publisher_reference_sensor_pose = self.create_publisher(TwistStamped, '/controller/out/corrected_sensor_pose', 10)
         self.publisher_servo_positions = self.create_publisher(JointState, '/controller/out/servo_positions', 10)
         self.publisher_drone_ref = self.create_publisher(TrajectorySetpoint, '/controller/out/trajectory_setpoint', 10)
+        self.publisher_end_effector = self.create_publisher(TwistStamped, '/controller/out/forward_kinematics', 10)
+        self.publisher_error = self.create_publisher(TwistStamped, '/controller/out/error', 10)
 
         # Data
-        self.P_SC = np.zeros((4,4))
         reference_pose = self.get_parameter('reference_pose').get_parameter_value().double_array_value
         if len(reference_pose) != 3:
             self.get_logger().error("Parameter 'reference_pose' must be a list of 3 elements.")
             return
-        self.P_Cref = self.evaluate_P_SC(
+        self.P_Cref = self.evaluate_P_CS(
             reference_pose[0],
             reference_pose[1],
             reference_pose[2])
+
         self.tactip = TwistStamped()
+        self.tactip.twist.linear.x = 0.0
+        self.tactip.twist.linear.y = 0.0
+        self.tactip.twist.linear.z = 0.0
+        self.tactip.twist.angular.x = 0.0
+        self.tactip.twist.angular.y = 0.0
+        self.tactip.twist.angular.z = 0.0
         self.servo_state = JointState()
         self.servo_state.position = [0., 0., 0.]
         self.vehicle_odometry = VehicleOdometry()
@@ -65,9 +73,19 @@ class PoseBasedATS(Node):
     # Callbacks
     def callback_timer(self):
         # Evaluate the error
-        self.evaluate_P_SC(self.tactip.twist.angular.x, self.tactip.twist.angular.y, self.tactip.twist.linear.z)
-        E_Sref = self.P_SC@self.P_Cref
+        P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x/180.*np.pi, self.tactip.twist.angular.y/180.*np.pi, self.tactip.twist.linear.z/1000.)
+        E_Sref = P_SC @ self.P_Cref
         e_sr = self.transformation_to_vector(E_Sref)
+        msg = TwistStamped()
+        msg.twist.linear.x = e_sr[0]
+        msg.twist.linear.y = e_sr[1]
+        msg.twist.linear.z = e_sr[2]
+        msg.twist.angular.x = e_sr[3]
+        msg.twist.angular.y = e_sr[4]
+        msg.twist.angular.z = e_sr[5]
+
+        msg.header.stamp = self.get_clock().now().to_msg()
+        self.publisher_error.publish(msg)
 
         # Control law TODO: add integral controller
         u_ss = self.Kp*np.eye(6)@e_sr 
@@ -75,32 +93,43 @@ class PoseBasedATS(Node):
         U_SS = self.vector_to_transformation(u_ss)
 
         P_S = self.forward_kinematics(self.get_state())
+
+        # Publish the forward kinematics for reference
+        p_S = self.transformation_to_vector(P_S)
+        msg = TwistStamped()
+        msg.twist.linear.x = p_S[0]
+        msg.twist.linear.y = p_S[1]
+        msg.twist.linear.z = p_S[2]
+        msg.twist.angular.x = p_S[3]
+        msg.twist.angular.y = p_S[4]
+        msg.twist.angular.z = p_S[5]
+
+        msg.header.stamp = self.get_clock().now().to_msg()
+        self.publisher_end_effector.publish(msg)
+
         P_Sref = P_S @ U_SS
 
         # Publish the corrected reference sensor pose in inertial frame in vector form
         p_Sref = self.transformation_to_vector(P_Sref)
         msg = TwistStamped()
         msg.twist.linear.x = p_Sref[0]
-        msg.twist.linear.x = p_Sref[1]
-        msg.twist.linear.x = p_Sref[2]
+        msg.twist.linear.y = p_Sref[1]
+        msg.twist.linear.z = p_Sref[2]
         msg.twist.angular.x = p_Sref[3]
-        msg.twist.angular.x = p_Sref[4]
-        msg.twist.angular.x = p_Sref[5]
+        msg.twist.angular.y = p_Sref[4]
+        msg.twist.angular.z = p_Sref[5]
 
         msg.header.stamp = self.get_clock().now().to_msg()
 
         self.publisher_reference_sensor_pose.publish(msg)
 
         # Inverse kinematics
-
         result = self.inverse_kinematics(P_Sref)
         state_reference = result[0]
         if result[1]==True:
             self.get_logger().debug(f"IK optimization converged with value {result[3]}")
             msg = TrajectorySetpoint()
-            msg.position[0] = state_reference[0]
-            msg.position[1] = state_reference[1]
-            msg.position[2] = state_reference[2]
+            msg.position = [state_reference[0], state_reference[1], state_reference[2]]
             msg.yaw = state_reference[5]
             self.publisher_drone_ref.publish(msg)
 
@@ -125,24 +154,45 @@ class PoseBasedATS(Node):
     ''' Evaluate transformation matrix of contact frame in sensor frame
     '''
     def evaluate_P_SC(self, alpha, beta, d):
-        self.P_SC[0,0] = np.cos(beta)
-        self.P_SC[0,1] = 0
-        self.P_SC[0,2] = -np.sin(beta)
-        self.P_SC[0,3] = d*np.sin(beta)
-        self.P_SC[1,0] = np.sin(alpha)*np.sin(beta)
-        self.P_SC[1,1] = np.cos(alpha)
-        self.P_SC[1,2] = np.sin(alpha)*np.cos(beta)
-        self.P_SC[1,3] = -d*np.sin(alpha)*np.cos(beta)
-        self.P_SC[2,0] = np.sin(beta)*np.cos(alpha)
-        self.P_SC[2,1] = -np.sin(alpha)
-        self.P_SC[2,2] = np.cos(alpha)*np.cos(beta)
-        self.P_SC[2,3] = -d*np.cos(alpha)*np.cos(beta)
-        self.P_SC[3,0] = 0
-        self.P_SC[3,1] = 0
-        self.P_SC[3,2] = 0
-        self.P_SC[3,3] = 1
+        P_SC = np.zeros((4,4))
+        P_SC[0,0] = np.cos(beta)
+        P_SC[0,1] = 0
+        P_SC[0,2] = -np.sin(beta)
+        P_SC[0,3] = d*np.sin(beta)
+        P_SC[1,0] = np.sin(alpha)*np.sin(beta)
+        P_SC[1,1] = np.cos(alpha)
+        P_SC[1,2] = np.sin(alpha)*np.cos(beta)
+        P_SC[1,3] = -d*np.sin(alpha)*np.cos(beta)
+        P_SC[2,0] = np.sin(beta)*np.cos(alpha)
+        P_SC[2,1] = -np.sin(alpha)
+        P_SC[2,2] = np.cos(alpha)*np.cos(beta)
+        P_SC[2,3] = -d*np.cos(alpha)*np.cos(beta)
+        P_SC[3,0] = 0
+        P_SC[3,1] = 0
+        P_SC[3,2] = 0
+        P_SC[3,3] = 1
 
-        return self.P_SC
+        return P_SC
+
+    def evaluate_P_CS(self, alpha, beta, d):
+        P_CS = np.zeros((4,4))
+        P_CS[0,0] = np.cos(beta)
+        P_CS[0,1] = np.sin(alpha)*np.sin(beta)
+        P_CS[0,2] = np.sin(beta)*np.cos(alpha)
+        P_CS[0,3] = 0
+        P_CS[1,0] = 0
+        P_CS[1,1] = np.cos(alpha)
+        P_CS[1,2] = -np.sin(alpha)
+        P_CS[1,3] = 0
+        P_CS[2,0] = -np.sin(beta)
+        P_CS[2,1] = np.sin(alpha)*np.cos(beta)
+        P_CS[2,2] = np.cos(alpha)*np.cos(beta)
+        P_CS[2,3] = d
+        P_CS[3,0] = 0
+        P_CS[3,1] = 0
+        P_CS[3,2] = 0
+        P_CS[3,3] = 1
+        return P_CS
 
     ''' Get HTM describing end-effector (sensor) pose in inertial frame, evaluated at latest state
     '''
@@ -156,18 +206,6 @@ class PoseBasedATS(Node):
         q_1 = state[6]
         q_2 = state[7]
         q_3 = state[8]
-        # x_B = self.vehicle_odometry.position[0]
-        # y_B = self.vehicle_odometry.position[1]
-        # z_B = self.vehicle_odometry.position[2]
-        
-        # euler = self.quaternion_to_euler(self.vehicle_odometry.q)
-        # roll = euler[0]
-        # pitch = euler[1]
-        # yaw = euler[2]
-
-        # q_1 = self.servo_state.position[0]
-        # q_2 = self.servo_state.position[1]
-        # q_3 = self.servo_state.position[2]
 
         P_S = np.zeros((4,4))
         P_S[0,0] = -(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_2) + np.cos(yaw)*np.cos(q_2)*np.cos(pitch)
@@ -193,8 +231,8 @@ class PoseBasedATS(Node):
         euler = self.quaternion_to_euler(self.vehicle_odometry.q)
         current_state = np.array([
             self.vehicle_odometry.position[0],
-            self.vehicle_odometry.position[0],
-            self.vehicle_odometry.position[0],
+            self.vehicle_odometry.position[1],
+            self.vehicle_odometry.position[2],
             euler[0],
             euler[1],
             euler[2],
@@ -234,6 +272,9 @@ class PoseBasedATS(Node):
 
     def rotmat_to_euler(self,rotmat):
         euler = np.zeros(3)
+        if rotmat[2,0]!=1 and rotmat[2,0]!=-1:
+            euler[1] = -np.arcsin(rotmat[2,0])
+
         euler[0] = np.arctan2(rotmat[1,0], rotmat[0,0])
         euler[1] = -np.arcsin(rotmat[2,0])
         euler[2] = np.arctan2(rotmat[2,1], rotmat[2,2])

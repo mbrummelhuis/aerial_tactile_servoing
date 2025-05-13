@@ -42,12 +42,9 @@ class MissionDirectorPy(Node):
         self.publisher_offboard_control_mode = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode',10)
         self.publisher_vehicle_command = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', 10)
 
+        self.publisher_md_state = self.create_publisher(Int32, '/md/state', 10)
+
         # PX4 subscribers
-        #self.subscriber_vehicle_status = self.create_subscription(
-        #    VehicleStatus, 
-        #    '/fmu/out/vehicle_status', 
-        #    self.vehicle_status_callback, 
-        #    qos_profile)
         self.subscriber_vehicle_odometry = self.create_subscription(
             VehicleOdometry, 
             '/fmu/out/vehicle_odometry', 
@@ -63,6 +60,9 @@ class MissionDirectorPy(Node):
         # Controller subscriber
         self.subscriber_controller = self.create_subscription(TrajectorySetpoint, '/controller/out/trajectory_setpoint', self.controller_callback, 10)
         self.subscriber_controller_servo = self.create_subscription(JointState, '/controller/out/servo_positions', self.controller_servo_callback, 10)
+        self.subscriber_controller_reference_sensor_pose = self.create_subscription(TwistStamped, '/fmu/out/corrected_sensor_pose', self.controller_pose_callback,10)
+        self.subscriber_controller_error = self.create_subscription(TwistStamped, '/controller/out/error', self.controller_error_callback, 10)
+        self.subscriber_controller_FK = self.create_subscription(TwistStamped, '/controller/out/forward_kinematics', self.controller_FK_callback, 10)
         # GZ subscribers
         self.subscriber_joint_states = self.create_subscription(
             JointState,
@@ -136,6 +136,7 @@ class MissionDirectorPy(Node):
                     self.get_logger().info("Waiting for position fix")
                     self.first_state_loop = False
 
+                self.publishMDState(0)
                 self.x_setpoint = self.vehicle_local_position.x
                 self.y_setpoint = self.vehicle_local_position.y
                 self.publishOffboardPositionMode()
@@ -145,7 +146,8 @@ class MissionDirectorPy(Node):
                     self.get_logger().info(f"Got position fix X: {self.x_setpoint} Y: {self.y_setpoint}")
                     self.FSM_state = 'move arm landed'
             case('move arm landed'):
-                done = self.move_arm_to_position(1.578, 0.4, -2.10)
+                done = self.move_arm_to_position(1.578, 0.0, -2.10)
+                self.publishMDState(1)
                 if done:
                     done = False
                     self.get_logger().info("Done moving arm into takeoff position")
@@ -156,6 +158,7 @@ class MissionDirectorPy(Node):
                 if self.first_state_loop:
                     self.get_logger().info(f"Waiting")
                     self.first_state_loop = False
+                self.publishMDState(2)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > 1:
                     self.first_state_loop = True
@@ -167,11 +170,13 @@ class MissionDirectorPy(Node):
                 self.armVehicle()
                 self.get_logger().info("Arming and going to offboard")
                 self.publishOffboardPositionMode()
+                self.publishMDState(3)
                 if self.armed and self.offboard:
                     self.get_logger().info("Taking off")
                     self.FSM_state = 'takeoff'
             
             case('takeoff'): # Takeoff - wait for takeoff altitude
+                self.publishMDState(4)
                 # get current vehicle altitude
                 current_altitude = self.vehicle_local_position.z
 
@@ -191,9 +196,10 @@ class MissionDirectorPy(Node):
                     self.state_start_time = datetime.datetime.now()
             
             case('hover'):
+                self.publishMDState(5)
                 # create and publish setpoint message
                 self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.get_logger().info(f'Hovered for {self.hover_time} seconds -- moving arm')
@@ -201,6 +207,7 @@ class MissionDirectorPy(Node):
                     self.state_start_time = datetime.datetime.now()
 
             case('move arm hover'):
+                self.publishMDState(6)
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 done = self.move_arm_to_position(1.0, 0.0, 0.578)
@@ -210,6 +217,7 @@ class MissionDirectorPy(Node):
                     self.FSM_state = 'wait_for_contact'
 
             case('wait_for_contact'):
+                self.publishMDState(7)
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 if self.first_state_loop:
@@ -229,6 +237,7 @@ class MissionDirectorPy(Node):
                     self.first_state_loop = True # Reset first state loop flag
 
             case('tactile_servoing'):
+                self.publishMDState(8)
                 self.tactile_servoing = True
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(
@@ -249,6 +258,7 @@ class MissionDirectorPy(Node):
                     self.first_state_loop = True # Reset first state loop flag
 
             case('land'):
+                self.publishMDState(9)
                 self.get_logger().debug('Landing')
                 # Calculate next landing altitude (plus because z down positive)
                 next_landing_altitude = self.vehicle_local_position.z + self.landing_velocity*self.timer_period
@@ -262,8 +272,8 @@ class MissionDirectorPy(Node):
                 self.previous_next_landing_altitude = next_landing_altitude
             
             case('landed'):
+                self.publishMDState(10)
                 self.get_logger().info('Done')
-                pass               
     
     def publish_arm_position_commands(self, q1, q2, q3):
         pass
@@ -310,6 +320,11 @@ class MissionDirectorPy(Node):
             return True
         else:
             return False
+    
+    def publishMDState(self, state):
+        msg = Int32()
+        msg.data = state
+        self.publisher_md_state.publish(msg)
 
     def publishOffboardPositionMode(self):
         msg = OffboardControlMode()
@@ -408,6 +423,12 @@ class MissionDirectorPy(Node):
         self.arm_velocities[1] = msg.velocity[1] # Shoulder
         self.arm_velocities[2] = msg.velocity[2] # Elbow
 
+    def controller_pose_callback(self,msg):
+        pass
+    def controller_error_callback(self,msg):
+        pass
+    def controller_FK_callback(self,msg):
+        pass
 
 def main():
     rclpy.init(args=None)
