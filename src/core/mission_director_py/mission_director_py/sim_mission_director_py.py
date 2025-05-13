@@ -45,6 +45,12 @@ class MissionDirectorPy(Node):
         self.publisher_md_state = self.create_publisher(Int32, '/md/state', 10)
 
         # PX4 subscribers
+        self.subscriber_vehicle_status = self.create_subscription(
+            VehicleStatus,
+            '/fmu/out/vehicle_status_v1',
+            self.vehicle_status_callback,
+            qos_profile
+        )
         self.subscriber_vehicle_odometry = self.create_subscription(
             VehicleOdometry, 
             '/fmu/out/vehicle_odometry', 
@@ -63,6 +69,7 @@ class MissionDirectorPy(Node):
         self.subscriber_controller_reference_sensor_pose = self.create_subscription(TwistStamped, '/fmu/out/corrected_sensor_pose', self.controller_pose_callback,10)
         self.subscriber_controller_error = self.create_subscription(TwistStamped, '/controller/out/error', self.controller_error_callback, 10)
         self.subscriber_controller_FK = self.create_subscription(TwistStamped, '/controller/out/forward_kinematics', self.controller_FK_callback, 10)
+        self.subscriber_controller_ik_check = self.create_subscription(TwistStamped, '/controller/out/ik_check', self.controller_ik_check_callback, 10)
         # GZ subscribers
         self.subscriber_joint_states = self.create_subscription(
             JointState,
@@ -159,6 +166,7 @@ class MissionDirectorPy(Node):
                     self.get_logger().info(f"Waiting")
                     self.first_state_loop = False
                 self.publishMDState(2)
+                self.publishOffboardPositionMode()
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > 1:
                     self.first_state_loop = True
@@ -166,8 +174,10 @@ class MissionDirectorPy(Node):
                     self.FSM_state = 'disarmed'
 
             case('disarmed'): # Disarmed - Wait for arming and offboard
-                self.engage_offboard_mode()
-                self.armVehicle()
+                if not self.offboard:
+                    self.engage_offboard_mode()
+                if not self.armed:
+                    self.armVehicle()
                 self.get_logger().info("Arming and going to offboard")
                 self.publishOffboardPositionMode()
                 self.publishMDState(3)
@@ -350,21 +360,18 @@ class MissionDirectorPy(Node):
         self.publish_vehicle_command(
             VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0)
         self.get_logger().info('Arm command sent')
-        self.armed = True
 
     def disarmVehicle(self):
         """Send a disarm command to the vehicle."""
         self.publish_vehicle_command(
             VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=0.0)
         self.get_logger().info('Disarm command sent')
-        self.armed = False
 
     def engage_offboard_mode(self):
         """Switch to offboard mode."""
         self.publish_vehicle_command(
             VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
         self.get_logger().info("Switching to offboard mode")
-        self.offboard = True
 
     def land(self):
         """Switch to land mode."""
@@ -392,16 +399,17 @@ class MissionDirectorPy(Node):
 
     # Callbacks
     def vehicle_status_callback(self, msg):
-        self.get_logger().debug(f'Received vehicle_status')
-        if (msg.arming_state == msg.ARMING_STATE_DISARMED):
-            self.armed = False
-        elif (msg.arming_state == msg.ARMING_STATE_ARMED):
+        if msg.arming_state == VehicleStatus.ARMING_STATE_ARMED:
             self.armed = True
-        
-        if (msg.nav_state == msg.NAVIGATION_STATE_OFFBOARD):
-            self.offboard=True
         else:
-            self.offboard=False
+            self.armed = False
+
+        if msg.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+            self.offboard = True
+        else:
+            self.offboard = False
+
+        self.vehicle_status = msg
 
     def vehicle_odometry_callback(self, msg):
         self.get_logger().debug(f'Received vehicle_odometry: {msg.position[2]}')
@@ -428,6 +436,8 @@ class MissionDirectorPy(Node):
     def controller_error_callback(self,msg):
         pass
     def controller_FK_callback(self,msg):
+        pass
+    def controller_ik_check_callback(self, msg):
         pass
 
 def main():
