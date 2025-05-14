@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from math import pi
 import time
+import os
 import cv2
 
 from geometry_msgs.msg import TwistStamped
@@ -19,9 +20,14 @@ class TactipDriver(Node):
         self.declare_parameter('frequency', 10.)
         self.declare_parameter('verbose', False)
         self.declare_parameter('test_model_time', False)
+        self.declare_parameter('save_debug_image', False)
 
         self.get_logger().info("Tactip driver initialized")
         self.get_logger().info(BASE_MODEL_PATH)
+
+        if self.get_parameter('save_debug_image').get_parameter_value().bool_value:
+            self.image_outfile_path = os.path.join('/home','martijn','aerial_tactile_servoing')
+            self.get_logger().info(f'Saving debug image at {os.path.join(self.image_outfile_path,'sensor_image.png')}')
 
         # publishers
         self.publisher_ = self.create_publisher(TwistStamped, '/sensors/tactip', 10)
@@ -39,11 +45,11 @@ class TactipDriver(Node):
     def timer_callback(self):
         # read the data
         sensor_image = self.sensor.process()
+        cv2.imwrite(os.path.join(self.image_outfile_path,'sensor_image.png'), sensor_image)
+
         #processed_image = process_image(sensor_image, **processed_image_params)
         data = self.sensor.predict(sensor_image)
         # The model outputs the sensor pose in the contact frame, but we want the contact frame pose in the sensor frame
-        # The -1 is a little bit hacky
-        data = data*-1.
 
         if self.get_parameter('verbose').get_parameter_value().bool_value:
             self.get_logger().info(f"Z (mm): {data[2]:.2f} \t Rx (deg): {data[3]:.2f} \t Ry (deg): {data[4]:.2f}")
@@ -69,7 +75,7 @@ class TactipDriver(Node):
             capture_start_time = time.time()
             processed_image = self.sensor.process()
             capture_end_time = time.time()
-            data = self.sensor.predict(processed_image)
+            _ = self.sensor.predict(processed_image)
             predict_end_time = time.time()
             capture_time.append(capture_end_time - capture_start_time)
             predict_time.append(predict_end_time - capture_end_time)

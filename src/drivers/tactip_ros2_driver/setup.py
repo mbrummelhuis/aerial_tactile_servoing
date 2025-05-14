@@ -3,7 +3,7 @@ from glob import glob
 
 package_name = 'tactip_ros2_driver'
 
-model_name = 'simple_cnn_b2_1'
+model_name = 'simple_cnn_A2_1'
 
 setup(
     name=package_name,

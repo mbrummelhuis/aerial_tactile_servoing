@@ -18,8 +18,9 @@ def generate_launch_description():
         parameters=[
             {'source': 4},
             {'frequency': 10.},
-            {'verbose': False},
-            {'test_model_time': True}
+            {'verbose': True},
+            {'test_model_time': False},
+            {'save_debug_image': True}
         ],
     )
     
