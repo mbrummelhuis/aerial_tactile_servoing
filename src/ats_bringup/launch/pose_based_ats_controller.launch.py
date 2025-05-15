@@ -1,7 +1,14 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.substitutions import LaunchConfiguration
+from launch.conditions import IfCondition
+
+from ament_index_python.packages import get_package_share_directory
+import os
+import datetime
+
+logging = False
 
 """
 Launch simulation with one arm.
@@ -31,6 +38,15 @@ def generate_launch_description():
     ld.add_action(arg_tactip_enable)
     ld.add_action(arg_major_frequency)
 
+    rosbag_record = []
+    if logging:
+        rosbag_name = 'ros2bag_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        ros2bag = ExecuteProcess(
+            cmd=['ros2', 'bag', 'record', '-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
+            output='screen', 
+            log_cmd=True,
+        )
+        ld.add_action(ros2bag)
 
     mission_director = Node(
         package='mission_director_py',
@@ -63,23 +79,35 @@ def generate_launch_description():
     )
     ld.add_action(controller)
 
+    param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
+    servo_driver = Node(
+        package="feetech_ros2",
+        executable="feetech_ros2_interface",
+        name="feetech_ros2_interface",
+        output="screen",
+        parameters=[param_file],
+        arguments=["--ros-args", "--log-level", "info"]
+    )
+    ld.add_action(servo_driver)
 
-    if LaunchConfiguration('tactip_enable') == 'true':
-        tactip_driver = Node(
-            package='tactip_ros2_driver',
-            executable='tactip_ros2_driver',
-            name='tactip_driver',
-            output='screen',
-            parameters=[
-                {'source': 4},
-                {'frequency': LaunchConfiguration('major_frequency')},
-                {'verbose': False},
-                {'test_model_time': False},
-                {'save_debug_image': False}
-            ],
-            arguments=['--ros-args', '--log-level', 'info']
-        )
-        ld.add_action(tactip_driver)
+
+    tactip_driver = Node(
+        package='tactip_ros2_driver',
+        executable='tactip_ros2_driver',
+        name='tactip_driver',
+        output='screen',
+        parameters=[
+            {'source': 4},
+            {'frequency': LaunchConfiguration('major_frequency')},
+            {'verbose': False},
+            {'test_model_time': False},
+            {'save_debug_image': False},
+            {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')}
+        ],
+        arguments=['--ros-args', '--log-level', 'info'],
+        condition=IfCondition(LaunchConfiguration('tactip_enable'))
+    )
+    ld.add_action(tactip_driver)
     
     
 

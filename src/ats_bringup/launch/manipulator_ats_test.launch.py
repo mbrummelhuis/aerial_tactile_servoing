@@ -111,12 +111,11 @@ def generate_launch_description():
             output='screen', 
             log_cmd=True,
         )
+        ld.add_action(ros2bag)
 
     ld.add_action(mission_director)
     ld.add_action(ats_planner)
     ld.add_action(ats_velocity_controller)
     ld.add_action(inverse_dif_kinematics)
-
-    ld.add_action(ros2bag)
     
     return ld
