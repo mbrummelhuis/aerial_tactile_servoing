@@ -3,8 +3,6 @@ from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
-import os
-
 """
 Launch simulation with one arm.
 
@@ -36,7 +34,7 @@ def generate_launch_description():
 
     mission_director = Node(
         package='mission_director_py',
-        executable='sim_mission_director',
+        executable='pbats_mission_director',
         name='mission_director',
         output='screen',
         parameters=[
@@ -77,8 +75,7 @@ def generate_launch_description():
                 {'frequency': LaunchConfiguration('major_frequency')},
                 {'verbose': False},
                 {'test_model_time': False},
-                {'save_debug_image': False},
-                {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')}
+                {'save_debug_image': False}
             ],
             arguments=['--ros-args', '--log-level', 'info']
         )

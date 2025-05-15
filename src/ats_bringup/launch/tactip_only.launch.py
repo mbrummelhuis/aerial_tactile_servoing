@@ -1,6 +1,8 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
+import os
+
 """
 Launch file for testing the TacTip ROS2 driver. 
 
@@ -20,7 +22,8 @@ def generate_launch_description():
             {'frequency': 10.},
             {'verbose': True},
             {'test_model_time': False},
-            {'save_debug_image': True}
+            {'save_debug_image': True},
+            {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')}
         ],
     )
     

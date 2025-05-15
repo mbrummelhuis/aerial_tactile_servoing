@@ -133,7 +133,9 @@ class MissionDirectorPy(Node):
         self.servo_position = True
 
         # Timer -- always last
-        self.timer_period = 1.0 / self.get_parameter('frequency').get_parameter_value().double_value
+        self.counter = 0
+        self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
+        self.timer_period = 1.0 / self.frequency
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
 
     def timer_callback(self):
@@ -168,22 +170,28 @@ class MissionDirectorPy(Node):
                 self.publishMDState(2)
                 self.publishOffboardPositionMode()
 
-                if (datetime.datetime.now() - self.state_start_time).seconds > 1:
+                if (datetime.datetime.now() - self.state_start_time).seconds > 5:
                     self.first_state_loop = True
                     self.state_start_time = datetime.datetime.now()
+                    self.get_logger().info("Going to disarmed state")
                     self.FSM_state = 'disarmed'
 
             case('disarmed'): # Disarmed - Wait for arming and offboard
-                if not self.offboard:
+                if not self.offboard and self.counter%self.frequency==0:
+                    self.get_logger().info("Sending offboard command")
                     self.engage_offboard_mode()
-                if not self.armed:
+                    self.counter = 0
+                if not self.armed and self.offboard and self.counter%self.frequency==0:
+                    self.get_logger().info("Sending arm command")
                     self.armVehicle()
-                self.get_logger().info("Arming and going to offboard")
+                    self.counter = 0
+                
                 self.publishOffboardPositionMode()
                 self.publishMDState(3)
                 if self.armed and self.offboard:
                     self.get_logger().info("Taking off")
                     self.FSM_state = 'takeoff'
+                    self.counter = 0
             
             case('takeoff'): # Takeoff - wait for takeoff altitude
                 self.publishMDState(4)

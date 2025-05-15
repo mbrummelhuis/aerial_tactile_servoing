@@ -66,11 +66,13 @@ class TacTip:
         _, img = self.cam.read()
         return img
 
-    def process(self, outfile=None):
+    def process(self, raw_outfile=None, proc_outfile=None):
         img = self.read()
+        if raw_outfile:
+            cv2.imwrite(raw_outfile, img)
         img = process_image(img, **self.sensor_params)
-        if outfile:
-            cv2.imwrite(outfile, img)
+        if proc_outfile:
+            cv2.imwrite(proc_outfile, img)
         return img
     
     def predict(self, processed_img):

@@ -21,31 +21,54 @@ class TactipDriver(Node):
         self.declare_parameter('verbose', False)
         self.declare_parameter('test_model_time', False)
         self.declare_parameter('save_debug_image', False)
+        self.declare_parameter('save_directory', 'Please set a save_directory in the launch file')
 
+        # Instantiate Tactip sensor
+        self.sensor = TacTip(self.get_parameter('source').get_parameter_value().integer_value)
+
+        # Node feedback
         self.get_logger().info("Tactip driver initialized")
         self.get_logger().info(BASE_MODEL_PATH)
+        self.get_logger().info(f"Reading from /dev/video{self.get_parameter('source').get_parameter_value().integer_value}" )
 
+
+        # Set up period image saving if enabled in launch
         if self.get_parameter('save_debug_image').get_parameter_value().bool_value:
-            self.image_outfile_path = os.path.join('/home','martijn','aerial_tactile_servoing')
-            self.get_logger().info(f'Saving debug image at {os.path.join(self.image_outfile_path,'sensor_image.png')}')
+            self.image_outfile_path = self.get_parameter('save_directory').get_parameter_value().string_value
+            self.get_logger().info(f'Saving debug images in {self.image_outfile_path}')
+            self.img_counter = 0
+            if len(os.listdir(self.image_outfile_path)) != 0: # If directory is not empty, exit to avoid overwriting data
+                self.get_logger().error("Directory not empty. Please delete or move data before proceeding.")
+                self.get_logger().error("Node will now exit. Please kill stack with  Ctrl+C.")
+                return
 
         # publishers
         self.publisher_ = self.create_publisher(TwistStamped, '/sensors/tactip', 10)
 
-        self.sensor = TacTip(self.get_parameter('source').get_parameter_value().integer_value)
-        self.get_logger().info(f"Reading from /dev/video{self.get_parameter('source').get_parameter_value().integer_value}" )
-
-        self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
-        self.period = 1.0/self.frequency # seconds
+        # Run testing model evaluation time functionality if enabled in Launch
         if self.get_parameter('test_model_time').get_parameter_value().bool_value:
             self.get_logger().info("Testing model execution time. It will run 1000 predictions through the model and print the average time taken.")
             self.test_model_execution_time()
+
+        # Set up timer
+        self.cycle_counter = 0
+        self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
+        self.period = 1.0/self.frequency # seconds
         self.timer = self.create_timer(self.period, self.timer_callback)
 
     def timer_callback(self):
         # read the data
-        sensor_image = self.sensor.process()
-        cv2.imwrite(os.path.join(self.image_outfile_path,'sensor_image.png'), sensor_image)
+        # Save an image every second
+        if self.get_parameter('save_debug_image').get_parameter_value().bool_value and self.cycle_counter%self.frequency == 0:
+            raw_outfile = os.path.join(self.image_outfile_path,'raw_image'+str(self.img_counter)+'.png')
+            proc_outfile = os.path.join(self.image_outfile_path,'sensor_image'+str(self.img_counter)+'.png')
+            sensor_image = self.sensor.process(raw_outfile=raw_outfile, proc_outfile=proc_outfile)
+            self.img_counter += 1
+            self.cycle_counter = 0
+        
+        # Just read data without saving
+        else:
+            sensor_image = self.sensor.process()
 
         #processed_image = process_image(sensor_image, **processed_image_params)
         data = self.sensor.predict(sensor_image)
@@ -66,6 +89,8 @@ class TactipDriver(Node):
         msg.twist.angular.z = data[5]
         self.publisher_.publish(msg)
         #self.get_logger().info(f"Published data: {msg}")
+
+        self.cycle_counter +=1
 
     def test_model_execution_time(self, iterations = 1000):
         start_time = time.time()
