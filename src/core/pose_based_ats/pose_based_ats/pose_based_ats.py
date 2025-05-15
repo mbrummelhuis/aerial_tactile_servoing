@@ -67,6 +67,15 @@ class PoseBasedATS(Node):
         self.servo_state.position = [0., 0., 0.]
         self.vehicle_odometry = VehicleOdometry()
 
+        self.weighting_matrix_simplified = np.eye(7)
+        self.weighting_matrix_simplified[0] = 1 # The vehicle states receive neutral penalty
+        self.weighting_matrix_simplified[1] = 1
+        self.weighting_matrix_simplified[2] = 1
+        self.weighting_matrix_simplified[3] = 1
+        self.weighting_matrix_simplified[4] = 0.1 # Lower penalty for moving q1
+        self.weighting_matrix_simplified[5] = 1000. # Higher penalty for moving q2
+        self.weighting_matrix_simplified[6] = 0.1 # Lower penalty for moving q3
+
         # Timer
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
         self.timer = self.create_timer(self.period, self.callback_timer)
@@ -94,7 +103,7 @@ class PoseBasedATS(Node):
         self.publish_transform(P_Sref, self.publisher_reference_sensor_pose)
 
         # Inverse kinematics
-        result = self.inverse_kinematics(P_Sref)
+        result = self.inverse_kinematics_simplified(P_Sref)
         state_reference = result[0]
         if result[1]==True:
             self.get_logger().debug(f"IK optimization converged with value {result[3]}")
@@ -238,9 +247,9 @@ class PoseBasedATS(Node):
 
         return P_C
 
-    ''' Get HTM describing end-effector (sensor) pose in inertial frame, evaluated at latest state
-    '''
     def forward_kinematics(self, state):
+        ''' Get HTM describing end-effector (sensor) pose in inertial frame, evaluated at latest state
+        '''
         x_B = state[0]
         y_B = state[1]
         z_B = state[2]
@@ -271,6 +280,41 @@ class PoseBasedATS(Node):
 
         return P_S
     
+    def forward_kinematics_simplified(self, state):
+        """ Returns a transformation matrix of the end-effector (sensor) pose in inertial frame with the uncontrollable states (pitch and roll) zero.
+        """
+        x_B = state[0]
+        y_B = state[1]
+        z_B = state[2]
+        roll = 0.0
+        pitch = 0.0
+        yaw = state[5]
+        q_1 = state[6]
+        q_2 = state[7]
+        q_3 = state[8]
+
+        P_S = np.zeros((4,4))
+        P_S[0,0] = -(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_2) + np.cos(yaw)*np.cos(q_2)*np.cos(pitch)
+        P_S[0,1] = -(-(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_2) - np.sin(q_2)*np.cos(yaw)*np.cos(pitch))*np.sin(q_3) + (-np.sin(yaw)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_3)
+        P_S[0,2] = -(-(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_2) - np.sin(q_2)*np.cos(yaw)*np.cos(pitch))*np.cos(q_3) - (-np.sin(yaw)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw))*np.sin(q_3)
+        P_S[0,3] = -0.11*np.sin(yaw)*np.sin(q_1 + roll) - 0.11*np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) - 0.311*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2) - 0.311*np.sin(q_2)*np.cos(yaw)*np.cos(pitch) - 0.311*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_3)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(q_3) - 0.273*np.sin(q_2)*np.cos(yaw)*np.cos(q_3)*np.cos(pitch) + 0.273*np.sin(q_3)*np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw) - 0.273*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) + x_B
+        P_S[1,0] = (-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.sin(q_2) + np.sin(yaw)*np.cos(q_2)*np.cos(pitch)
+        P_S[1,1] = -((-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_2) - np.sin(yaw)*np.sin(q_2)*np.cos(pitch))*np.sin(q_3) + (np.sin(yaw)*np.sin(pitch)*np.sin(q_1 + roll) + np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_3)
+        P_S[1,2] = -((-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_2) - np.sin(yaw)*np.sin(q_2)*np.cos(pitch))*np.cos(q_3) - (np.sin(yaw)*np.sin(pitch)*np.sin(q_1 + roll) + np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_3)
+        P_S[1,3] = -0.11*np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + 0.11*np.sin(q_1 + roll)*np.cos(yaw) - 0.311*np.sin(yaw)*np.sin(q_2)*np.cos(pitch) - 0.311*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(q_1 + roll) + 0.311*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2) - 0.273*np.sin(yaw)*np.sin(q_2)*np.cos(q_3)*np.cos(pitch) + 0.273*np.sin(yaw)*np.sin(q_3)*np.sin(pitch)*np.sin(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) + 0.273*np.sin(q_3)*np.cos(yaw)*np.cos(q_1 + roll) + 0.273*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2)*np.cos(q_3) + y_B
+        P_S[2,0] = -np.sin(q_2)*np.cos(pitch)*np.cos(q_1 + roll) - np.sin(pitch)*np.cos(q_2)
+        P_S[2,1] = -(np.sin(q_2)*np.sin(pitch) - np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll))*np.sin(q_3) + np.sin(q_1 + roll)*np.cos(q_3)*np.cos(pitch)
+        P_S[2,2] = -(np.sin(q_2)*np.sin(pitch) - np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll))*np.cos(q_3) - np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch)
+        P_S[2,3] = -0.11*np.cos(pitch)*np.cos(q_1 + roll) + 0.311*np.sin(q_2)*np.sin(pitch) - 0.311*np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll) + 0.273*np.sin(q_2)*np.sin(pitch)*np.cos(q_3) + 0.273*np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch) - 0.273*np.cos(q_2)*np.cos(q_3)*np.cos(pitch)*np.cos(q_1 + roll) + z_B
+        P_S[3,0] = 0
+        P_S[3,1] = 0
+        P_S[3,2] = 0
+        P_S[3,3] = 1
+
+        return P_S        
+
+    ''' Returns the full 9DOF states
+    '''    
     def get_state(self):
         euler = self.quaternion_to_euler(self.vehicle_odometry.q)
         current_state = np.array([
@@ -286,6 +330,23 @@ class PoseBasedATS(Node):
         ])
         return current_state
 
+    ''' Returns the 7DOF controllable substate
+    '''
+    def get_state_simplified(self):
+        ''' Returns the 7DOF controllable substate
+        '''
+        euler = self.quaternion_to_euler(self.vehicle_odometry.q)
+        current_state = np.array([
+            self.vehicle_odometry.position[0],
+            self.vehicle_odometry.position[1],
+            self.vehicle_odometry.position[2],
+            euler[2],
+            self.servo_state.position[0],
+            self.servo_state.position[1],
+            self.servo_state.position[2]
+        ])
+        return current_state
+    
     # Auxiliary functions
     ''' Get rotation matrix corresponding to wxyz quaternion
     '''
@@ -375,11 +436,28 @@ class PoseBasedATS(Node):
         error = pos_err**2 + ang_err**2
         regularization = reg_weight * np.linalg.norm(state - current_state)**2
         return error + regularization
+    
+    def ik_objective_simplified(self, state, P_des, current_state, reg_weight=1e-3):
+        P_S = self.forward_kinematics_simplified()
+
+        # Position error (Euclidean distance)
+        pos_err = np.linalg.norm(P_S[:3, 3] - P_des[:3, 3])
+
+        # Orientation error (rotation angle difference)
+        R1 = P_S[:3, :3]
+        R2 = P_des[:3, :3]
+        delta_R = R.from_matrix(R1.T @ R2)
+        ang_err = np.linalg.norm(delta_R.as_rotvec())
+
+        error = pos_err**2 + ang_err**2 # Total inverse kinematic error
+
+        regularization = np.matmul((state-current_state), np.matmul(self.weighting_matrix_simplified, (state-current_state)))
+        return error + reg_weight*regularization
 
     def inverse_kinematics(self, P_des, bounds=None):
         # Bounds
-        lower_state_bounds = [None, None, None, -np.pi/4, -np.pi/4, -np.pi, -0.1, -np.pi/6, -np.pi/2]
-        upper_state_bounds = [None, None, None, np.pi/4, np.pi/4, np.pi, np.pi, np.pi/6, np.pi/2]
+        lower_state_bounds = [None, None, None, -np.pi/4, -np.pi/4, -np.pi, -0.1, -np.pi/8, -np.pi/2]
+        upper_state_bounds = [None, None, None, np.pi/4, np.pi/4, np.pi, np.pi, np.pi/8, np.pi/2]
         bounds = list(zip(lower_state_bounds, upper_state_bounds))
 
         # State
@@ -394,6 +472,25 @@ class PoseBasedATS(Node):
             options={'ftol': 1e-6, 'disp': False}
         )
         return result.x, result.success, result.message, result.fun
+    
+    def inverse_kinematics_simplified(self, P_des, bounds=None):
+        # Bounds
+        lower_state_bounds = [None, None, None, -np.pi, -np.pi, -np.pi/8, -np.pi/2]
+        upper_state_bounds = [None, None, None, np.pi, np.pi, np.pi/8, np.pi/2]
+        bounds = list(zip(lower_state_bounds, upper_state_bounds))
+
+        # State
+        current_state = self.get_state_simplified()
+
+        result = minimize(
+            fun=self.ik_objective,
+            x0=current_state,
+            args=(P_des, current_state),
+            bounds=bounds,
+            method='SLSQP',
+            options={'ftol': 1e-6, 'disp': False}
+        )
+        return result.x, result.success, result.message, result.fun        
     
     def publish_transform(self, T, publisher):
         vec = self.transformation_to_vector(T)

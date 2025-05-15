@@ -47,7 +47,7 @@ class MissionDirectorPy(Node):
         # PX4 subscribers
         self.subscriber_vehicle_status = self.create_subscription(
             VehicleStatus,
-            '/fmu/out/vehicle_status_v1', # TODO: Change for flight
+            '/fmu/out/vehicle_status', # TODO: Change for flight
             self.vehicle_status_callback,
             qos_profile
         )
@@ -99,10 +99,8 @@ class MissionDirectorPy(Node):
         self.tactip_data.twist.angular.z = 0.0
         
         # Arms publishers
-        self.publisher_pivot_vel = self.create_publisher(Float64, '/shoulder_1_vel_cmd', 10) # TODO: Change to interface with Feetech ROS2 driver 
-        self.publisher_shoulder_vel = self.create_publisher(Float64, '/elbow_1_vel_cmd', 10)
-        self.publisher_elbow_vel = self.create_publisher(Float64, '/forearm_1_vel_cmd', 10)
-
+        self.publisher_servo_state = self.create_publisher(JointState, '/servo/in/references', 10) # TODO: Change to interface with Feetech ROS2 driver 
+        
         # set initial state
         self.FSM_state = 'entrypoint'
         self.input_state = 0
@@ -243,12 +241,11 @@ class MissionDirectorPy(Node):
                     self.get_logger().info('Waiting for contact')
                     self.first_state_loop = False
 
-                if self.tactip_data.twist.linear.z == 0:
-                    self.get_logger().warning('Tactip depth is zero, is sensor connected?')
-
+                self.get_logger().info(f'Tactip depth: {self.tactip_data.twist.linear.z}')
+                #self.get_logger().info(f'Tactip conditions: {self.tactip.data.twist.linear.z*1000 < -2.0}')
                 # Transition
                 # If contact depth is greater than 1.0 mm, we assume contact.
-                if (self.tactip_data.twist.linear.z) < -2.5 or self.input_state == 1:
+                if (self.tactip_data.twist.linear.z) < -2.0 or self.input_state == 1:
                     self.input_state = 0
                     self.get_logger().info(f"Contact detected -- Tactile servoing")
                     self.tactile_servoing = True
@@ -265,11 +262,6 @@ class MissionDirectorPy(Node):
                     self.vehicle_trajectory_setpoint.position[1], 
                     self.vehicle_trajectory_setpoint.position[2], 
                     self.vehicle_trajectory_setpoint.yaw)
-                self.move_arm_to_position(
-                    self.servo_reference.position[0],
-                    self.servo_reference.position[1],
-                    self.servo_reference.position[2]
-                )
                 if self.first_state_loop:
                     self.get_logger().info('Tactile servoing')
                     self.first_state_loop = False
@@ -301,23 +293,26 @@ class MissionDirectorPy(Node):
                 self.get_logger().info('Done')
     
     def publish_arm_position_commands(self, q1, q2, q3):
-        pass
+        msg = JointState()
+        msg.position = [q1, q2, q3]
+        msg.velocity = [0., 0., 0.]
+        msg.name = ['q1', 'q2', 'q3']
+        msg.header.stamp = self.get_clock().now().to_msg()
+        self.publisher_servo_state.publish()
 
-    def publish_arm_velocity_commands(self, q1, q2, q3): # TODO: Rework for flight test
-        msg = Float64()
-        msg.data = q1
-        self.publisher_pivot_vel.publish(msg)
-        msg.data = q2
-        self.publisher_shoulder_vel.publish(msg)
-        msg.data = q3
-        self.publisher_elbow_vel.publish(msg)
+    def publish_arm_velocity_commands(self, q1, q2, q3):
+        msg = JointState()
+        msg.position = [0., 0., 0.]
+        msg.velocity = [q1, q2, q3]
+        msg.name = ['q1', 'q2', 'q3']
+        msg.header.stamp = self.get_clock().now().to_msg()
+        self.publisher_servo_state.publish()
     
     def input_state_callback(self, msg):
         self.get_logger().info(f'Got input state: {msg.data}')
         self.input_state = msg.data
 
     def tactip_callback(self, msg):
-        #self.get_logger().info(f'Tactip data: {msg}')
         self.tactip_data = msg
 
     def controller_callback(self, msg):
@@ -325,24 +320,12 @@ class MissionDirectorPy(Node):
     
     def controller_servo_callback(self, msg):
         self.servo_reference = msg
+        if self.tactile_servoing:
+            self.publish_arm_position_commands(msg.position[0], msg.position[1], msg.position[2])
 
     def move_arm_to_position(self, pos1, pos2, pos3): # TODO: Rework for flight
-        epsilon = 0.01
-
-        error1 = pos1-self.arm_positions[0]
-        error2 = pos2-self.arm_positions[1]
-        error3 = pos3-self.arm_positions[2]
-        vel1 = self.kp*(error1) - self.kd*self.arm_velocities[0]
-        vel2 = self.kp*(error2) - self.kd*self.arm_velocities[1]
-        vel3 = self.kp*(error3) - self.kd*self.arm_velocities[2]
-        self.publish_arm_velocity_commands(vel1, vel2, vel3)
-
-        if(abs(error1) < epsilon and abs(error2) < epsilon and abs(error3) < epsilon):
-            self.publish_arm_velocity_commands(0.0, 0.0, 0.0)
-            self.get_logger().info(f"Done moving arm to {pos1}, {pos2}, {pos3}")
-            return True
-        else:
-            return False
+        # Add the position offset here?
+        pass
     
     def publishMDState(self, state):
         msg = Int32()

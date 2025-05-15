@@ -32,7 +32,10 @@ def generate_launch_description():
     return LaunchDescription([
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(sim_launch_path),
-            launch_arguments={'logging': 'false', 'tactip_enable': 'false', 'major_frequency': '25.0'}.items()),
+            launch_arguments={
+                'logging': 'false', 
+                'tactip_enable': 'true', 
+                'major_frequency': '25.0'}.items()),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(sim_controller_path)),
         *rosbag_record

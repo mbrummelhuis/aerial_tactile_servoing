@@ -72,7 +72,10 @@ class TactipDriver(Node):
 
         #processed_image = process_image(sensor_image, **processed_image_params)
         data = self.sensor.predict(sensor_image)
-        # The model outputs the sensor pose in the contact frame, but we want the contact frame pose in the sensor frame
+        # The model outputs the sensor pose in the contact frame
+
+        # Hacky -1 to comply with convention
+        data = -1*data
 
         if self.get_parameter('verbose').get_parameter_value().bool_value:
             self.get_logger().info(f"Z (mm): {data[2]:.2f} \t Rx (deg): {data[3]:.2f} \t Ry (deg): {data[4]:.2f}")
