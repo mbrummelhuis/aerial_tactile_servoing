@@ -1,0 +1,38 @@
+# Builds the image from the Dockerfile
+services:
+  aerial-tactile-servoing-controller:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile-no-build-jazzy
+    container_name: aerial-tactile-servoing-container
+    privileged: true
+    network_mode: 'host' # share host network
+    stdin_open: true # docker run -i
+    tty: true        # docker run -t
+    environment:
+      - ROS_DOMAIN_ID=75
+    devices:
+      - "/dev/video0:/dev/video0" # share video device for tactip
+      - "/dev/ttyUSB0:/dev/ttyUSB0" # share USB device for servos
+    command: ats_bringup test_tactip.launch.py
+
+  # UXRCE agent service by Anton -- Image has agent built in
+  urxce-agent:
+    image: antbre/uxrce_agent:latest
+    privileged: true
+    network_mode: 'host'
+    command: udp4 -p 8888 
+  
+  # Mavlink router for QGC -- use custom Docker image
+  mavlink-router:
+    image: mbrummelhuis/mavlink_router:latest
+    privileged: true
+    network_mode: 'host'
+    devices:
+      - "/dev/ttyS1:/dev/ttyS1"  
+  
+  # Zenoh bridge for ROS2 network sharing -- use their Docker image
+  zenoh-bridge:
+    image: eclipse/zenoh-bridge-ros2dds:latest
+    privileged: true
+    network_mode: 'host'
