@@ -50,7 +50,7 @@ def generate_launch_description():
 
     mission_director = Node(
         package='mission_director_py',
-        executable='pbats_mission_director',
+        executable='flight_mission_director_takeoff_land',
         name='mission_director',
         output='screen',
         parameters=[
