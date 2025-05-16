@@ -3,6 +3,7 @@ from rclpy.node import Node
 from math import pi
 import time
 import os
+import numpy as np
 import cv2
 
 from geometry_msgs.msg import TwistStamped
@@ -50,6 +51,9 @@ class TactipDriver(Node):
             self.get_logger().info("Testing model execution time. It will run 1000 predictions through the model and print the average time taken.")
             self.test_model_execution_time()
 
+        # Rotation between output in actual frame and the end-effector frame
+        self.R_T = np.array([[1, 0, 0], [0, -1, 0],[0, 0, -1]])
+
         # Set up timer
         self.cycle_counter = 0
         self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
@@ -74,11 +78,13 @@ class TactipDriver(Node):
         data = self.sensor.predict(sensor_image)
         # The model outputs the sensor pose in the contact frame
 
-        # Hacky -1 to comply with convention
-        data = -1*data
+        # Rotation from actual output frame to desired (i.e. convention-wise) end-effector frame
+        rot_pred_pos = np.matmul(self.R_T, data[:3]) # Rotate positions to end-effector frame
+        rot_pred_ang = np.matmul(self.R_T, data[3:6]) # Rotate angles to end-effector frames
+        rot_pred_pose = np.concatenate([rot_pred_pos, rot_pred_ang])
 
         if self.get_parameter('verbose').get_parameter_value().bool_value:
-            self.get_logger().info(f"Z (mm): {data[2]:.2f} \t Rx (deg): {data[3]:.2f} \t Ry (deg): {data[4]:.2f}")
+            self.get_logger().info(f"Z (mm): {rot_pred_pose[2]:.2f} \t Rx (deg): {rot_pred_pose[3]:.2f} \t Ry (deg): {rot_pred_pose[4]:.2f}")
 
         # publish the data
         # The model outputs are in mm and deg, so convert to SI
