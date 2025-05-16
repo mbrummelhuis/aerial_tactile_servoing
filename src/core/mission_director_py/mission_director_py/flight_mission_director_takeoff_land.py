@@ -7,6 +7,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from std_msgs.msg import Int32
 from std_msgs.msg import Float64
 
+from numpy import pi
+
 from geometry_msgs.msg import TwistStamped
 
 from sensor_msgs.msg import JointState
@@ -99,7 +101,7 @@ class MissionDirectorPy(Node):
         self.tactip_data.twist.angular.z = 0.0
         
         # Arms publishers
-        self.publisher_servo_state = self.create_publisher(JointState, '/servo/in/references', 10) # TODO: Change to interface with Feetech ROS2 driver 
+        self.publisher_servo_state = self.create_publisher(JointState, '/servo/in/state', 10)
         
         # set initial state
         self.FSM_state = 'entrypoint'
@@ -136,6 +138,9 @@ class MissionDirectorPy(Node):
         self.timer_period = 1.0 / self.frequency
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
 
+    def __del__(self):
+        self.move_arm_to_position(0., 0., 0.,)
+
     def timer_callback(self):
         match self.FSM_state:
             case('entrypoint'): # Entry point - wait for position fix
@@ -147,15 +152,24 @@ class MissionDirectorPy(Node):
                 self.x_setpoint = self.vehicle_local_position.x
                 self.y_setpoint = self.vehicle_local_position.y
                 self.publishOffboardPositionMode()
-                if self.x_setpoint != 0.0 and self.y_setpoint != 0.0:
+                if (self.x_setpoint != 0.0 and self.y_setpoint != 0.0) or self.input_state == 1:
                     self.transition_state(new_state='move_arm_landed')
             
             case('move_arm_landed'):
-                self.move_arm_to_position(1.578, 0.0, -2.10)
+                self.move_arm_to_position(1.578, 0.0, -2.0)
                 self.publishMDState(1)
-                if (datetime.datetime.now() - self.state_start_time).seconds > 5: # Wait 5 seconds until the arm is in position
-                    self.transition_state(new_state='wait_for_arm_offboard')
-                    self.get_logger().info('Waiting for arming and offboard')
+                 # Wait 5 seconds until the arm is in position
+                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
+                    self.transition_state(new_state='move_arm_landed2')
+
+
+            case('move_arm_landed2'):
+                self.move_arm_to_position(pi/3, 0.0, pi/6)
+                self.publishMDState(1)
+                 # Wait 5 seconds until the arm is in position
+                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
+                    self.transition_state(new_state='move_arm_landed')
+
 
             case('wait_for_arm_offboard'):
                 self.publishOffboardPositionMode()
@@ -212,7 +226,7 @@ class MissionDirectorPy(Node):
         msg.velocity = [0., 0., 0.]
         msg.name = ['q1', 'q2', 'q3']
         msg.header.stamp = self.get_clock().now().to_msg()
-        self.publisher_servo_state.publish()
+        self.publisher_servo_state.publish(msg)
 
     def publish_arm_velocity_commands(self, q1, q2, q3):
         msg = JointState()
@@ -220,7 +234,7 @@ class MissionDirectorPy(Node):
         msg.velocity = [q1, q2, q3]
         msg.name = ['q1', 'q2', 'q3']
         msg.header.stamp = self.get_clock().now().to_msg()
-        self.publisher_servo_state.publish()
+        self.publisher_servo_state.publish(msg)
     
     def input_state_callback(self, msg):
         self.get_logger().info(f'Got input state: {msg.data}')
@@ -351,6 +365,9 @@ class MissionDirectorPy(Node):
         pass
 
     def transition_state(self, new_state='end'):
+        if self.input_state != 0:
+            self.get_logger().info('Manually triggered state transition')
+            self.input_state = 0
         self.state_start_time = datetime.datetime.now() # Reset start time for next state
         self.first_state_loop = False # Reset first loop flag
         self.get_logger().info(f"Transition from {self.FSM_state} to {new_state}")

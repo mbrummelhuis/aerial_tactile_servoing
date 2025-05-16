@@ -8,7 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 import os
 import datetime
 
-logging = False
+logging = True
 
 """
 Launch simulation with one arm.
@@ -38,7 +38,6 @@ def generate_launch_description():
     ld.add_action(arg_tactip_enable)
     ld.add_action(arg_major_frequency)
 
-    rosbag_record = []
     if logging:
         rosbag_name = 'ros2bag_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         ros2bag = ExecuteProcess(
