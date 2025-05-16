@@ -25,7 +25,7 @@ setup(
             'esa_demo_md = mission_director_py.mission_director_py:main',
             'dry_ats_md = mission_director_py.dry_ats_mission_director_py:main',
             'sim_mission_director = mission_director_py.sim_mission_director_py:main',
-            'flight_mission_director_takeoff_land.py = mission_director_py.flight_mission_director_takeoff_land.py:main',
+            'flight_mission_director_takeoff_land = mission_director_py.flight_mission_director_takeoff_land:main',
         ],
     },
 )

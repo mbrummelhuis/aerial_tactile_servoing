@@ -109,17 +109,17 @@ class PoseBasedATS(Node):
             self.get_logger().debug(f"IK optimization converged with value {result[3]}")
             msg = TrajectorySetpoint()
             msg.position = [state_reference[0], state_reference[1], state_reference[2]]
-            msg.yaw = state_reference[5]
+            msg.yaw = state_reference[3]
             self.publisher_drone_ref.publish(msg)
 
             msg = JointState()
             msg.name = ['q1', 'q2', 'q3']
-            msg.position = [state_reference[6], state_reference[7], state_reference[8]]
+            msg.position = [state_reference[4], state_reference[5], state_reference[6]]
             msg.header.stamp = self.get_clock().now().to_msg()
             self.publisher_servo_positions.publish(msg)
 
             # FK for checking
-            check = self.forward_kinematics(state_reference)
+            check = self.forward_kinematics_simplified(state_reference)
             self.publish_transform(check, self.publisher_ik_check)
 
         elif result[1]!=True:
@@ -280,18 +280,18 @@ class PoseBasedATS(Node):
 
         return P_S
     
-    def forward_kinematics_simplified(self, state):
+    def forward_kinematics_simplified(self, simplified_state):
         """ Returns a transformation matrix of the end-effector (sensor) pose in inertial frame with the uncontrollable states (pitch and roll) zero.
         """
-        x_B = state[0]
-        y_B = state[1]
-        z_B = state[2]
+        x_B = simplified_state[0]
+        y_B = simplified_state[1]
+        z_B = simplified_state[2]
         roll = 0.0
         pitch = 0.0
-        yaw = state[5]
-        q_1 = state[6]
-        q_2 = state[7]
-        q_3 = state[8]
+        yaw = simplified_state[3]
+        q_1 = simplified_state[4]
+        q_2 = simplified_state[5]
+        q_3 = simplified_state[6]
 
         P_S = np.zeros((4,4))
         P_S[0,0] = -(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_2) + np.cos(yaw)*np.cos(q_2)*np.cos(pitch)
@@ -437,8 +437,8 @@ class PoseBasedATS(Node):
         regularization = reg_weight * np.linalg.norm(state - current_state)**2
         return error + regularization
     
-    def ik_objective_simplified(self, state, P_des, current_state, reg_weight=1e-3):
-        P_S = self.forward_kinematics_simplified()
+    def ik_objective_simplified(self, simplified_state, P_des, current_state, reg_weight=1e-3):
+        P_S = self.forward_kinematics_simplified(simplified_state)
 
         # Position error (Euclidean distance)
         pos_err = np.linalg.norm(P_S[:3, 3] - P_des[:3, 3])
@@ -451,7 +451,7 @@ class PoseBasedATS(Node):
 
         error = pos_err**2 + ang_err**2 # Total inverse kinematic error
 
-        regularization = np.matmul((state-current_state), np.matmul(self.weighting_matrix_simplified, (state-current_state)))
+        regularization = np.matmul((simplified_state-current_state), np.matmul(self.weighting_matrix_simplified, (simplified_state-current_state)))
         return error + reg_weight*regularization
 
     def inverse_kinematics(self, P_des, bounds=None):
@@ -483,7 +483,7 @@ class PoseBasedATS(Node):
         current_state = self.get_state_simplified()
 
         result = minimize(
-            fun=self.ik_objective,
+            fun=self.ik_objective_simplified,
             x0=current_state,
             args=(P_des, current_state),
             bounds=bounds,
