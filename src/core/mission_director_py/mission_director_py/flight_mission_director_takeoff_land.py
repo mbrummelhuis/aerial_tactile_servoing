@@ -161,13 +161,19 @@ class MissionDirectorPy(Node):
                  # Wait 5 seconds until the arm is in position
                 if (datetime.datetime.now() - self.state_start_time).seconds > 10 or self.input_state == 1:
                     self.transition_state(new_state='move_arm_landed2')
+                    self.counter += 1
 
             case('move_arm_landed2'):
                 self.move_arm_to_position(pi/3, 0.0, pi/6)
                 self.publishMDState(2)
                  # Wait 5 seconds until the arm is in position
-                if (datetime.datetime.now() - self.state_start_time).seconds > 10 or self.input_state == 1:
+                if self.counter > 5 or self.input_state == 2:
+                    self.transition_state('landed')
+
+                elif (datetime.datetime.now() - self.state_start_time).seconds > 10 or self.input_state == 1:
                     self.transition_state(new_state='move_arm_landed')
+                    self.counter += 1
+                
 
             case('wait_for_arm_offboard'):
                 self.publishOffboardPositionMode()
@@ -217,8 +223,11 @@ class MissionDirectorPy(Node):
             
             case('landed'):
                 self.publishMDState(10)
-                self.get_logger().info('Done')
-                self.disarmVehicle()
+                if self.first_state_loop:
+                    self.get_logger().info('Done')
+                    self.move_arm_to_position(0.0, 0.0, 0.0)
+                    self.disarmVehicle()
+                    self.first_state_loop = False
     
     def publish_arm_position_commands(self, q1, q2, q3):
         msg = JointState()
