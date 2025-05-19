@@ -162,14 +162,12 @@ class MissionDirectorPy(Node):
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
                     self.transition_state(new_state='move_arm_landed2')
 
-
             case('move_arm_landed2'):
                 self.move_arm_to_position(pi/3, 0.0, pi/6)
                 self.publishMDState(2)
                  # Wait 5 seconds until the arm is in position
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
                     self.transition_state(new_state='move_arm_landed')
-
 
             case('wait_for_arm_offboard'):
                 self.publishOffboardPositionMode()
@@ -188,6 +186,8 @@ class MissionDirectorPy(Node):
 
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
+                if self.first_state_loop:
+                    self.get_logger().info(f'Vehicle local position heading: {self.vehicle_local_position.heading}')
                 
                 # check if vehicle has reached takeoff altitude
                 if abs(current_altitude)+0.1 > abs(self.takeoff_altitude) and not self.input_state==1:
@@ -199,7 +199,7 @@ class MissionDirectorPy(Node):
                 self.publishMDState(5)
                 # create and publish setpoint message
                 self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.transition_state('land')

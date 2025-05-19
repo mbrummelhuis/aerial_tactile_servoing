@@ -7,6 +7,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from std_msgs.msg import Int32
 from std_msgs.msg import Float64
 
+from numpy import pi
+
 from geometry_msgs.msg import TwistStamped
 
 from sensor_msgs.msg import JointState
@@ -47,7 +49,7 @@ class MissionDirectorPy(Node):
         # PX4 subscribers
         self.subscriber_vehicle_status = self.create_subscription(
             VehicleStatus,
-            '/fmu/out/vehicle_status', # TODO: Change for flight
+            '/fmu/out/vehicle_status',
             self.vehicle_status_callback,
             qos_profile
         )
@@ -62,7 +64,7 @@ class MissionDirectorPy(Node):
             self.vehicle_local_position_callback,
             qos_profile
         )
-        
+
         # Controller subscriber
         self.subscriber_controller = self.create_subscription(TrajectorySetpoint, '/controller/out/trajectory_setpoint', self.controller_callback, 10)
         self.subscriber_controller_servo = self.create_subscription(JointState, '/controller/out/servo_positions', self.controller_servo_callback, 10)
@@ -76,7 +78,7 @@ class MissionDirectorPy(Node):
             '/servo/out/state',
             self.joint_states_callback,
             10)
-        
+
         # Subscribe to manual input
         self.subscriber_input_state = self.create_subscription(
             Int32, 
@@ -97,10 +99,10 @@ class MissionDirectorPy(Node):
         self.tactip_data.twist.angular.x = 0.0
         self.tactip_data.twist.angular.y = 0.0
         self.tactip_data.twist.angular.z = 0.0
-        
+
         # Arms publishers
-        self.publisher_servo_state = self.create_publisher(JointState, '/servo/in/references', 10) # TODO: Change to interface with Feetech ROS2 driver 
-        
+        self.publisher_servo_state = self.create_publisher(JointState, '/servo/in/state', 10)
+
         # set initial state
         self.FSM_state = 'entrypoint'
         self.input_state = 0
@@ -108,7 +110,7 @@ class MissionDirectorPy(Node):
         self.state_start_time = datetime.datetime.now()
         self.armed = False
         self.offboard = False
-        self.tactile_servoing = False
+        self.contact_depth_threshold = -0.0015
         self.hover_time = self.get_parameter('hover_time').get_parameter_value().double_value
         self.takeoff_altitude = self.get_parameter('takeoff_altitude').get_parameter_value().double_value
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
@@ -136,6 +138,9 @@ class MissionDirectorPy(Node):
         self.timer_period = 1.0 / self.frequency
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
 
+    def __del__(self):
+        self.move_arm_to_position(0., 0., 0.,)
+
     def timer_callback(self):
         match self.FSM_state:
             case('entrypoint'): # Entry point - wait for position fix
@@ -147,115 +152,73 @@ class MissionDirectorPy(Node):
                 self.x_setpoint = self.vehicle_local_position.x
                 self.y_setpoint = self.vehicle_local_position.y
                 self.publishOffboardPositionMode()
-                if self.x_setpoint != 0.0 and self.y_setpoint != 0.0:
-                    self.state_start_time = datetime.datetime.now()
-                    self.first_state_loop = False
-                    self.get_logger().info(f"Got position fix X: {self.x_setpoint} Y: {self.y_setpoint}")
-                    self.FSM_state = 'move arm landed'
-            
-            case('move arm landed'):
-                done = self.move_arm_to_position(1.578, 0.0, -2.10)
+                if (self.x_setpoint != 0.0 and self.y_setpoint != 0.0) or self.input_state == 1:
+                    self.transition_state(new_state='move_arm_landed')
+
+            case('move_arm_landed'):
+                self.move_arm_to_position(1.578, 0.0, -2.0)
                 self.publishMDState(1)
-                if done:
-                    done = False
-                    self.get_logger().info("Done moving arm into takeoff position")
-                    self.state_start_time = datetime.datetime.now()
-                    self.FSM_state = 'wait'
+                 # Wait 5 seconds until the arm is in position
+                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
+                    self.transition_state(new_state='wait_for_arm_offboard')
 
-            case('wait'):
-                if self.first_state_loop:
-                    self.get_logger().info(f"Waiting")
-                    self.first_state_loop = False
-                self.publishMDState(2)
-                self.publishOffboardPositionMode()
-
-                if (datetime.datetime.now() - self.state_start_time).seconds > 5:
-                    self.first_state_loop = True
-                    self.state_start_time = datetime.datetime.now()
-                    self.get_logger().info("Going to disarmed state")
-                    self.FSM_state = 'disarmed'
-
-            case('disarmed'): # Disarmed - Wait for arming and offboard
-                if not self.offboard and self.counter%self.frequency==0:
-                    self.get_logger().info("Sending offboard command")
-                    self.engage_offboard_mode()
-                    self.counter = 0
-                if not self.armed and self.offboard and self.counter%self.frequency==0:
-                    self.get_logger().info("Sending arm command")
-                    self.armVehicle()
-                    self.counter = 0
-                
+            case('wait_for_arm_offboard'):
                 self.publishOffboardPositionMode()
                 self.publishMDState(3)
-                if self.armed and self.offboard:
-                    self.get_logger().info("Taking off")
-                    self.FSM_state = 'takeoff'
-                    self.counter = 0
-            
+                if self.armed and not self.offboard:
+                    self.get_logger().info('Armed but not offboard -- waiting')
+                elif not self.armed and self.offboard:
+                    self.get_logger().info('Not armed but offboard -- waiting')
+                elif self.armed and self.offboard:
+                    self.transition_state('takeoff')
+
             case('takeoff'): # Takeoff - wait for takeoff altitude
                 self.publishMDState(4)
                 # get current vehicle altitude
                 current_altitude = self.vehicle_local_position.z
 
-                # create and publish setpoint message
                 self.publishOffboardPositionMode()
-                # send takeoff command
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
+                if self.first_state_loop:
+                    self.get_logger().info(f'Vehicle local position heading: {self.vehicle_local_position.heading}')
                 
                 # check if vehicle has reached takeoff altitude
-                if abs(current_altitude)+0.1 > abs(self.takeoff_altitude) and not self.input_state==1:
-                    self.get_logger().info('Reached takeoff altitude -- switching to hover')
-                    self.FSM_state = 'hover'
-                    self.state_start_time = datetime.datetime.now()
+                if abs(current_altitude)+0.1 > abs(self.takeoff_altitude) or self.input_state==1:
+                    self.transition_state('hover')
                 elif (self.input_state == 3):
-                    self.get_logger().info(f'Input state is 3 -- manually transitioning to start_hover')
-                    self.FSM_state = 'hover'
-                    self.state_start_time = datetime.datetime.now()
-            
+                    self.transition_state('hover')
+
             case('hover'):
                 self.publishMDState(5)
                 # create and publish setpoint message
                 self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, 0.0)
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
 
-                if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
-                    self.get_logger().info(f'Hovered for {self.hover_time} seconds -- moving arm')
-                    self.FSM_state = 'move arm hover'
-                    self.state_start_time = datetime.datetime.now()
+                if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time or self.input_state==1:
+                    self.transition_state('move_arm_for_ats')
 
-            case('move arm hover'):
+            case('move_arm_for_ats'):
                 self.publishMDState(6)
+                # Stay in place
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
-                done = self.move_arm_to_position(1.0, 0.0, 0.578)
-                if done:
-                    self.get_logger().info("Finished moving arm into tactile servoing position")
-                    self.state_start_time = datetime.datetime.now()
-                    self.FSM_state = 'wait_for_contact'
+                self.move_arm_to_position(pi/3, 0.0, pi/6)
+                self.x_forward_setpoint = self.x_setpoint
 
-            case('wait_for_contact'):
+                # Transition
+                if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time or self.input_state==1:
+                    self.transition_state('look_for_contact')
+
+            case('look_for_contact'):
                 self.publishMDState(7)
                 self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
-                if self.first_state_loop:
-                    self.get_logger().info('Waiting for contact')
-                    self.first_state_loop = False
+                self.x_forward_setpoint = self.x_forward_setpoint + self.landing_velocity*self.timer_period # fly forward
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint)
+                if self.tactip_data.twist.linear.z < self.contact_depth_threshold: # If tactip depth is deeper than 1.5 mm
+                    self.transition_state('contact')
 
-                self.get_logger().info(f'Tactip depth: {self.tactip_data.twist.linear.z}')
-                #self.get_logger().info(f'Tactip conditions: {self.tactip.data.twist.linear.z*1000 < -2.0}')
-                # Transition
-                # If contact depth is greater than 1.0 mm, we assume contact.
-                if (self.tactip_data.twist.linear.z) < -2.0 or self.input_state == 1:
-                    self.input_state = 0
-                    self.get_logger().info(f"Contact detected -- Tactile servoing")
-                    self.tactile_servoing = True
-                    self.FSM_state = 'tactile_servoing'
-                    self.state_start_time = datetime.datetime.now()
-                    self.first_state_loop = True # Reset first state loop flag
-
-            case('tactile_servoing'):
+            case('contact'):
                 self.publishMDState(8)
-                self.tactile_servoing = True
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(
                     self.vehicle_trajectory_setpoint.position[0], 
@@ -271,39 +234,35 @@ class MissionDirectorPy(Node):
                     self.get_logger().info('Tactile servoing')
                     self.first_state_loop = False
 
-                # Transition    
-                if datetime.datetime.now() - self.state_start_time > datetime.timedelta(seconds=600.):
-                    self.tactile_servoing = False
-                    self.get_logger().info(f"Waited for 600 seconds -- switching to land")
-                    self.FSM_state = 'land'
-                    self.state_start_time = datetime.datetime.now()
-                    self.first_state_loop = True # Reset first state loop flag
+                # Transition 1: Lost contact
+                if self.tactip_data.twist.linear.z > self.contact_depth_threshold:
+                    self.transition_state('look_for_contact')
+                elif (datetime.datetime.now() - self.state_start_time).seconds > 30. or self.input_state==1:
+                    self.transition_state('land')
 
             case('land'):
                 self.publishMDState(9)
                 self.get_logger().debug('Landing')
-                # Calculate next landing altitude (plus because z down positive)
                 next_landing_altitude = self.vehicle_local_position.z + self.landing_velocity*self.timer_period
-                # create and publish setpoint message
                 self.publishOffboardPositionMode()
                 self.land()
                 if abs(self.previous_next_landing_altitude - next_landing_altitude) < 0.001:
-                    self.get_logger().info('Landed')
-                    self.FSM_state = 'landed'
+                    self.transition_state(new_state='landed')
 
                 self.previous_next_landing_altitude = next_landing_altitude
-            
+
             case('landed'):
                 self.publishMDState(10)
                 self.get_logger().info('Done')
-    
+                self.disarmVehicle()
+
     def publish_arm_position_commands(self, q1, q2, q3):
         msg = JointState()
         msg.position = [q1, q2, q3]
         msg.velocity = [0., 0., 0.]
         msg.name = ['q1', 'q2', 'q3']
         msg.header.stamp = self.get_clock().now().to_msg()
-        self.publisher_servo_state.publish()
+        self.publisher_servo_state.publish(msg)
 
     def publish_arm_velocity_commands(self, q1, q2, q3):
         msg = JointState()
@@ -311,8 +270,8 @@ class MissionDirectorPy(Node):
         msg.velocity = [q1, q2, q3]
         msg.name = ['q1', 'q2', 'q3']
         msg.header.stamp = self.get_clock().now().to_msg()
-        self.publisher_servo_state.publish()
-    
+        self.publisher_servo_state.publish(msg)
+
     def input_state_callback(self, msg):
         self.get_logger().info(f'Got input state: {msg.data}')
         self.input_state = msg.data
@@ -322,16 +281,14 @@ class MissionDirectorPy(Node):
 
     def controller_callback(self, msg):
         self.vehicle_trajectory_setpoint = msg
-    
+
     def controller_servo_callback(self, msg):
         self.servo_reference = msg
-        if self.tactile_servoing:
-            self.publish_arm_position_commands(msg.position[0], msg.position[1], msg.position[2])
 
     def move_arm_to_position(self, pos1, pos2, pos3): # TODO: Rework for flight
         q1 = pos1 - 1.7 # Subtract 1.7 rad to account for homing offset in the flight system
         self.publish_arm_position_commands(q1, pos2, pos3)
-    
+
     def publishMDState(self, state):
         msg = Int32()
         msg.data = state
@@ -415,10 +372,10 @@ class MissionDirectorPy(Node):
     def vehicle_odometry_callback(self, msg):
         self.get_logger().debug(f'Received vehicle_odometry: {msg.position[2]}')
         self.vehicle_odometry = msg
-    
+
     def vehicle_local_position_callback(self, msg):
         self.vehicle_local_position = msg
-    
+
     def input_state_callback(self, msg):
         self.get_logger().info(f'Got input state: {msg.data}')
         self.input_state = msg.data
@@ -440,6 +397,15 @@ class MissionDirectorPy(Node):
         pass
     def controller_ik_check_callback(self, msg):
         pass
+
+    def transition_state(self, new_state='end'):
+        if self.input_state != 0:
+            self.get_logger().info('Manually triggered state transition')
+            self.input_state = 0
+        self.state_start_time = datetime.datetime.now() # Reset start time for next state
+        self.first_state_loop = False # Reset first loop flag
+        self.get_logger().info(f"Transition from {self.FSM_state} to {new_state}")
+        self.FSM_state = new_state
 
 def main():
     rclpy.init(args=None)
