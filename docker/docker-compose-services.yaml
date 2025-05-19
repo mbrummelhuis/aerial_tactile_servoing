@@ -11,4 +11,4 @@ services:
     privileged: true
     network_mode: 'host'
     devices:
-      - "/dev/ttyS1:/dev/ttyS1"
+      - "/dev/ttyS9:/dev/ttyS1"
