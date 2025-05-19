@@ -5,9 +5,8 @@ import datetime
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 from std_msgs.msg import Int32
-from std_msgs.msg import Float64
 
-from numpy import pi
+from numpy import pi, clip
 
 from geometry_msgs.msg import TwistStamped
 
@@ -31,6 +30,7 @@ class MissionDirectorPy(Node):
         self.declare_parameter('takeoff_altitude', 2.0)
         self.declare_parameter('landing_velocity', -0.5)
         self.declare_parameter('hover_time', 10.0)
+        self.declare_parameter('position_clip', 0)
 
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -115,6 +115,7 @@ class MissionDirectorPy(Node):
         self.takeoff_altitude = self.get_parameter('takeoff_altitude').get_parameter_value().double_value
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
         self.previous_next_landing_altitude = abs(self.takeoff_altitude)+0.1
+        self.position_clip = self.get_parameter('position_clip').get_parameter_value().double_value
         self.kp = 2.
         self.kd = 0.3
 
@@ -137,9 +138,6 @@ class MissionDirectorPy(Node):
         self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
         self.timer_period = 1.0 / self.frequency
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
-
-    def __del__(self):
-        self.move_arm_to_position(0., 0., 0.,)
 
     def timer_callback(self):
         match self.FSM_state:
@@ -287,6 +285,10 @@ class MissionDirectorPy(Node):
         self.publisher_offboard_control_mode.publish(msg)
 
     def publishTrajectoryPositionSetpoint(self, x, y, z, yaw):
+        # If clipping is not zero, clip the position
+        if self.position_clip > 0.1:
+            x_clipped = clip(x, -self.position_clip, self.position_clip)
+            y_clipped = clip(y, -self.position_clip, self.position_clip)
         msg = TrajectorySetpoint()
         msg.position[0] = x
         msg.position[1] = y
