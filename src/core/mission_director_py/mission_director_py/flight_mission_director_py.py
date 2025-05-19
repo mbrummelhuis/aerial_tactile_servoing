@@ -185,8 +185,6 @@ class MissionDirectorPy(Node):
                 # check if vehicle has reached takeoff altitude
                 if abs(current_altitude)+0.1 > abs(self.takeoff_altitude) or self.input_state==1:
                     self.transition_state('hover')
-                elif (self.input_state == 3):
-                    self.transition_state('hover')
 
             case('hover'):
                 self.publishMDState(5)
@@ -375,10 +373,6 @@ class MissionDirectorPy(Node):
 
     def vehicle_local_position_callback(self, msg):
         self.vehicle_local_position = msg
-
-    def input_state_callback(self, msg):
-        self.get_logger().info(f'Got input state: {msg.data}')
-        self.input_state = msg.data
 
     def joint_states_callback(self, msg):
         self.arm_positions[0] = msg.position[0] # Pivot
