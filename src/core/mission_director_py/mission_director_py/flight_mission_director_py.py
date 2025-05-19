@@ -194,6 +194,8 @@ class MissionDirectorPy(Node):
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time or self.input_state==1:
                     self.transition_state('move_arm_for_ats')
+                elif not self.offboard or self.input_state == 2:
+                    self.transition_state('emergency')
 
             case('move_arm_for_ats'):
                 self.publishMDState(6)
@@ -206,6 +208,8 @@ class MissionDirectorPy(Node):
                 # Transition
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time or self.input_state==1:
                     self.transition_state('look_for_contact')
+                elif not self.offboard or self.input_state == 2:
+                    self.transition_state('emergency')
 
             case('look_for_contact'):
                 self.publishMDState(7)
@@ -214,6 +218,8 @@ class MissionDirectorPy(Node):
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint)
                 if self.tactip_data.twist.linear.z < self.contact_depth_threshold: # If tactip depth is deeper than 1.5 mm
                     self.transition_state('contact')
+                elif not self.offboard or self.input_state == 2:
+                    self.transition_state('emergency')
 
             case('contact'):
                 self.publishMDState(8)
@@ -237,8 +243,11 @@ class MissionDirectorPy(Node):
                     self.transition_state('look_for_contact')
                 elif (datetime.datetime.now() - self.state_start_time).seconds > 30. or self.input_state==1:
                     self.transition_state('land')
+                elif not self.offboard or self.input_state == 2:
+                    self.transition_state('emergency')
 
             case('land'):
+                self.move_arm_to_position(0.0, 0.0, 0.0)
                 self.publishMDState(9)
                 self.get_logger().debug('Landing')
                 next_landing_altitude = self.vehicle_local_position.z + self.landing_velocity*self.timer_period
@@ -253,6 +262,11 @@ class MissionDirectorPy(Node):
                 self.publishMDState(10)
                 self.get_logger().info('Done')
                 self.disarmVehicle()
+
+            case('emergency'):
+                self.move_arm_to_position(0.0, 0.0, 0.0)
+                self.publishMDState(-1)
+                self.get_logger().warn("Emergency state - no offboard mode")
 
     def publish_arm_position_commands(self, q1, q2, q3):
         msg = JointState()
