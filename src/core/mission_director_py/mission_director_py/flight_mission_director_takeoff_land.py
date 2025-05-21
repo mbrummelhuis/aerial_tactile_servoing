@@ -200,12 +200,14 @@ class MissionDirectorPy(Node):
             
             case('hover'):
                 self.publishMDState(5)
-                # create and publish setpoint message
+
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.transition_state('waypoint')
+                elif not self.offboard or self.input_state == 2:
+                    self.transition_state('emergency')
 
             case('waypoint'):
                 self.publishMDState(6)
@@ -214,6 +216,8 @@ class MissionDirectorPy(Node):
                 self.publishTrajectoryPositionSetpoint(1.0, 1.0, self.takeoff_altitude, 0.0)
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.transition_state('land')
+                elif not self.offboard or self.input_state == 2:
+                    self.transition_state('emergency')
 
             case('land'):
                 self.publishMDState(9)
@@ -233,6 +237,11 @@ class MissionDirectorPy(Node):
                     self.move_arm_to_position(0.0, 0.0, 0.0)
                     self.disarmVehicle()
                     self.first_state_loop = False
+
+            case('emergency'):
+                self.move_arm_to_position(0.0, 0.0, 0.0)
+                self.publishMDState(-1)
+                self.get_logger().warn("Emergency state - no offboard mode")
     
     def publish_arm_position_commands(self, q1, q2, q3):
         msg = JointState()
@@ -289,10 +298,11 @@ class MissionDirectorPy(Node):
         if self.position_clip > 0.1:
             x_clipped = clip(x, -self.position_clip, self.position_clip)
             y_clipped = clip(y, -self.position_clip, self.position_clip)
+            z_clipped = clip(z, 0.0, self.position_clip)
         msg = TrajectorySetpoint()
-        msg.position[0] = x
-        msg.position[1] = y
-        msg.position[2] = z
+        msg.position[0] = x_clipped
+        msg.position[1] = y_clipped
+        msg.position[2] = z_clipped
         msg.yaw = yaw
         msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
         self.publisher_vehicle_trajectory_setpoint.publish(msg)

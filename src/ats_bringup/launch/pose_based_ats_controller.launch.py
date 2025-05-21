@@ -9,6 +9,7 @@ import os
 import datetime
 
 logging = False
+md_name = 'flight_mission_director_takeoff_land'
 
 """
 Launch simulation with one arm.
@@ -49,14 +50,15 @@ def generate_launch_description():
 
     mission_director = Node(
         package='mission_director_py',
-        executable='flight_mission_director_takeoff_land',
+        executable=md_name,
         name='mission_director',
         output='screen',
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
             {'takeoff_altitude': -1.5},
             {'landing_velocity': -0.5},
-            {'hover_time': 5.0}
+            {'hover_time': 5.0},
+            {'position_clip': 3.0}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
@@ -78,6 +80,7 @@ def generate_launch_description():
     )
     ld.add_action(controller)
 
+    # Ctrl + / to comment/uncomment a code block
     # param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
     # servo_driver = Node(
     #     package="feetech_ros2",
@@ -90,23 +93,23 @@ def generate_launch_description():
     # ld.add_action(servo_driver)
 
 
-    tactip_driver = Node(
-        package='tactip_ros2_driver',
-        executable='tactip_ros2_driver',
-        name='tactip_driver',
-        output='screen',
-        parameters=[
-            {'source': 4},
-            {'frequency': LaunchConfiguration('major_frequency')},
-            {'verbose': False},
-            {'test_model_time': False},
-            {'save_debug_image': False},
-            {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')}
-        ],
-        arguments=['--ros-args', '--log-level', 'info'],
-        condition=IfCondition(LaunchConfiguration('tactip_enable'))
-    )
-    ld.add_action(tactip_driver)
+    # tactip_driver = Node(
+    #     package='tactip_ros2_driver',
+    #     executable='tactip_ros2_driver',
+    #     name='tactip_driver',
+    #     output='screen',
+    #     parameters=[
+    #         {'source': 4},
+    #         {'frequency': LaunchConfiguration('major_frequency')},
+    #         {'verbose': False},
+    #         {'test_model_time': False},
+    #         {'save_debug_image': False},
+    #         {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')}
+    #     ],
+    #     arguments=['--ros-args', '--log-level', 'info'],
+    #     condition=IfCondition(LaunchConfiguration('tactip_enable'))
+    # )
+    # ld.add_action(tactip_driver)
     
     
 
