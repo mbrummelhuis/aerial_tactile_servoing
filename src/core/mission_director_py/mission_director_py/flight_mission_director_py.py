@@ -323,7 +323,7 @@ class MissionDirectorPy(Node):
         if self.position_clip > 0.1:
             x_clipped = clip(x, -self.position_clip, self.position_clip)
             y_clipped = clip(y, -self.position_clip, self.position_clip)
-            z_clipped = clip(z, 0.0, self.position_clip)
+            z_clipped = clip(z, -self.position_clip, 0.0) # Negative up
         msg = TrajectorySetpoint()
         msg.position[0] = x_clipped
         msg.position[1] = y_clipped

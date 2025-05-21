@@ -30,7 +30,7 @@ class MissionDirectorPy(Node):
         self.declare_parameter('takeoff_altitude', 2.0)
         self.declare_parameter('landing_velocity', -0.5)
         self.declare_parameter('hover_time', 10.0)
-        self.declare_parameter('position_clip', 0)
+        self.declare_parameter('position_clip', 0.0)
 
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -164,6 +164,7 @@ class MissionDirectorPy(Node):
 
             case('wait_for_arm_offboard'):
                 self.publishOffboardPositionMode()
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.vehicle_local_position.z, self.vehicle_local_position.heading)
                 self.publishMDState(3)
                 if self.armed and not self.offboard:
                     self.get_logger().info('Armed but not offboard -- waiting')
@@ -181,6 +182,8 @@ class MissionDirectorPy(Node):
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 if self.first_state_loop:
                     self.get_logger().info(f'Vehicle local position heading: {self.vehicle_local_position.heading}')
+                    self.get_logger().info(f'Takeoff altitude: {self.takeoff_altitude}')
+                    self.first_state_loop = False
                 
                 # check if vehicle has reached takeoff altitude
                 if abs(current_altitude)+0.1 > abs(self.takeoff_altitude) and not self.input_state==1:
@@ -277,7 +280,7 @@ class MissionDirectorPy(Node):
         if self.position_clip > 0.1:
             x_clipped = clip(x, -self.position_clip, self.position_clip)
             y_clipped = clip(y, -self.position_clip, self.position_clip)
-            z_clipped = clip(z, 0.0, self.position_clip)
+            z_clipped = clip(z, -self.position_clip, 0.0) # Negative up
         msg = TrajectorySetpoint()
         msg.position[0] = x_clipped
         msg.position[1] = y_clipped
@@ -376,8 +379,8 @@ class MissionDirectorPy(Node):
             self.get_logger().info('Manually triggered state transition')
             self.input_state = 0
         self.state_start_time = datetime.datetime.now() # Reset start time for next state
-        self.first_state_loop = False # Reset first loop flag
-        self.get_logger().info(f"Transition from {self.FSM_state} to {new_state}")
+        self.first_state_loop = True # Reset first loop flag
+        self.get_logger().info(f"[STATE TRANSITION] from {self.FSM_state} to {new_state}")
         self.FSM_state = new_state
 
 def main():

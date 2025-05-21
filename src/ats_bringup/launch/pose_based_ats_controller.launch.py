@@ -8,7 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 import os
 import datetime
 
-logging = False
+logging = True
 md_name = 'flight_mission_director_takeoff_land'
 
 """
@@ -91,7 +91,6 @@ def generate_launch_description():
     #     arguments=["--ros-args", "--log-level", "info"]
     # )
     # ld.add_action(servo_driver)
-
 
     # tactip_driver = Node(
     #     package='tactip_ros2_driver',
