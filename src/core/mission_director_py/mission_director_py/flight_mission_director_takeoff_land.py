@@ -162,18 +162,6 @@ class MissionDirectorPy(Node):
                     self.transition_state(new_state='wait_for_arm_offboard')
                     self.counter += 1
 
-            case('move_arm_landed2'):
-                self.move_arm_to_position(pi/3, 0.0, pi/6)
-                self.publishMDState(2)
-                self.publishOffboardPositionMode()
-                 # Wait 5 seconds until the arm is in position
-                if self.counter > 5 or self.input_state == 2:
-                    self.transition_state('landed')
-
-                elif (datetime.datetime.now() - self.state_start_time).seconds > 10 or self.input_state == 1:
-                    self.transition_state(new_state='move_arm_landed')
-                    self.counter += 1
-
             case('wait_for_arm_offboard'):
                 self.publishOffboardPositionMode()
                 self.publishMDState(3)
@@ -201,19 +189,10 @@ class MissionDirectorPy(Node):
             case('hover'):
                 self.publishMDState(5)
 
+                self.move_arm_to_position(pi/3, 0.0, pi/6)
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
 
-                if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
-                    self.transition_state('waypoint')
-                elif not self.offboard or self.input_state == 2:
-                    self.transition_state('emergency')
-
-            case('waypoint'):
-                self.publishMDState(6)
-
-                self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(1.0, 1.0, self.takeoff_altitude, 0.0)
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time and not self.input_state==1:
                     self.transition_state('land')
                 elif not self.offboard or self.input_state == 2:
@@ -239,7 +218,7 @@ class MissionDirectorPy(Node):
                     self.first_state_loop = False
 
             case('emergency'):
-                self.move_arm_to_position(0.0, 0.0, 0.0)
+                self.move_arm_to_position(1.578, 0.0, -1.9)
                 self.publishMDState(-1)
                 self.get_logger().warn("Emergency state - no offboard mode")
     

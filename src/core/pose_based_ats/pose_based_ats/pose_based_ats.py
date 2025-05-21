@@ -475,8 +475,9 @@ class PoseBasedATS(Node):
     
     def inverse_kinematics_simplified(self, P_des, bounds=None):
         # Bounds
-        lower_state_bounds = [None, None, None, -np.pi, -np.pi, -np.pi/8, -np.pi/2]
-        upper_state_bounds = [None, None, None, np.pi, np.pi, np.pi/8, np.pi/2]
+        # [x, y, z, yaw, q1, q2, q3]
+        lower_state_bounds = [None, None, None, -np.pi, -np.pi, -np.pi/10, -np.pi/2]
+        upper_state_bounds = [None, None, None, np.pi, np.pi, np.pi/10, np.pi/2]
         bounds = list(zip(lower_state_bounds, upper_state_bounds))
 
         # State

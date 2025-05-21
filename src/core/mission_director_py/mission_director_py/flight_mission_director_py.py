@@ -216,8 +216,8 @@ class MissionDirectorPy(Node):
             case('look_for_contact'):
                 self.publishMDState(7)
                 self.publishOffboardPositionMode()
-                self.x_forward_setpoint = self.x_forward_setpoint + self.landing_velocity*self.timer_period # fly forward
-                self.publishTrajectoryPositionSetpoint(self.x_setpoint)
+                self.y_forward_setpoint = self.y_forward_setpoint + self.landing_velocity*self.timer_period # fly forward
+                self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_forward_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 if self.tactip_data.twist.linear.z < self.contact_depth_threshold: # If tactip depth is deeper than 1.5 mm
                     self.transition_state('contact')
                 elif not self.offboard or self.input_state == 2:
@@ -266,7 +266,7 @@ class MissionDirectorPy(Node):
                 self.disarmVehicle()
 
             case('emergency'):
-                self.move_arm_to_position(0.0, 0.0, 0.0)
+                self.move_arm_to_position(1.578, 0.0, -1.9)
                 self.publishMDState(-1)
                 self.get_logger().warn("Emergency state - no offboard mode")
 

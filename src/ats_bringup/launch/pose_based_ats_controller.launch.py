@@ -57,7 +57,7 @@ def generate_launch_description():
             {'frequency': LaunchConfiguration('major_frequency')},
             {'takeoff_altitude': -1.5},
             {'landing_velocity': -0.5},
-            {'hover_time': 5.0},
+            {'hover_time': 20.0},
             {'position_clip': 3.0}
         ],
         arguments=['--ros-args', '--log-level', 'info']
