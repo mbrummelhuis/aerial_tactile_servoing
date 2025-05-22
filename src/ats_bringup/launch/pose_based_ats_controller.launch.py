@@ -8,7 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 import os
 import datetime
 
-logging = True
+logging = False
 md_name = 'flight_mission_director_takeoff_land'
 
 """
@@ -81,16 +81,16 @@ def generate_launch_description():
     ld.add_action(controller)
 
     # Ctrl + / to comment/uncomment a code block
-    # param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
-    # servo_driver = Node(
-    #     package="feetech_ros2",
-    #     executable="feetech_ros2_interface",
-    #     name="feetech_ros2_interface",
-    #     output="screen",
-    #     parameters=[param_file],
-    #     arguments=["--ros-args", "--log-level", "info"]
-    # )
-    # ld.add_action(servo_driver)
+    param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', 'feetech_ros2.yaml')
+    servo_driver = Node(
+        package="feetech_ros2",
+        executable="feetech_ros2_interface",
+        name="feetech_ros2_interface",
+        output="screen",
+        parameters=[param_file],
+        arguments=["--ros-args", "--log-level", "info"]
+    )
+    ld.add_action(servo_driver)
 
     # tactip_driver = Node(
     #     package='tactip_ros2_driver',
