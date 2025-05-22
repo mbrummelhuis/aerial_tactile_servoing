@@ -30,8 +30,9 @@ class MissionDirectorPy(Node):
         self.declare_parameter('frequency', 10.)
         self.declare_parameter('takeoff_altitude', 2.0)
         self.declare_parameter('landing_velocity', -0.5)
+        self.declare_parameter('search_velocity', -0.3)
         self.declare_parameter('hover_time', 10.0)
-        self.declare_parameter('position_clip', 0)
+        self.declare_parameter('position_clip', 0.0)
 
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -50,7 +51,7 @@ class MissionDirectorPy(Node):
         # PX4 subscribers
         self.subscriber_vehicle_status = self.create_subscription(
             VehicleStatus,
-            '/fmu/out/vehicle_status',
+            '/fmu/out/vehicle_status_v1',
             self.vehicle_status_callback,
             qos_profile
         )
@@ -115,10 +116,14 @@ class MissionDirectorPy(Node):
         self.hover_time = self.get_parameter('hover_time').get_parameter_value().double_value
         self.takeoff_altitude = self.get_parameter('takeoff_altitude').get_parameter_value().double_value
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
+        self.search_velocity = self.get_parameter('search_velocity').get_parameter_value().double_value
         self.previous_next_landing_altitude = abs(self.takeoff_altitude)+0.1
         self.position_clip = self.get_parameter('position_clip').get_parameter_value().double_value
         self.kp = 2.
         self.kd = 0.3
+        self.arm_offset_angle_q1 = 1.75
+        self.arm_offset_angle_q2 = 0.0
+        self.arm_offset_angle_q3 = -1.85
 
         self.arm_positions = [0.0, 0.0, 0.0]
         self.arm_velocities = [0.0, 0.0, 0.0]
@@ -155,10 +160,29 @@ class MissionDirectorPy(Node):
                 self.y_setpoint = self.vehicle_local_position.y
                 self.publishOffboardPositionMode()
                 if (self.x_setpoint != 0.0 and self.y_setpoint != 0.0) or self.input_state == 1:
-                    self.transition_state(new_state='move_arm_landed')
+                    self.get_logger().info(f'Got position fix! \t x: {self.x_setpoint} \t y: {self.y_setpoint}')
+                    self.transition_state(new_state='wait_for_servo_driver')
+
+            case('wait_for_servo_driver'):
+                if (datetime.datetime.now() - self.state_start_time).seconds > 2 or self.input_state == 1:
+                    self.transition_state('move_arm_landed')
 
             case('move_arm_landed'):
-                self.move_arm_to_position(1.578, 0.0, -1.9)
+                self.move_arm_to_position(pi/2, 0.0, self.arm_offset_angle_q3)
+                self.publishMDState(1)
+                 # Wait 5 seconds until the arm is in position
+                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
+                    self.transition_state(new_state='extend_arm')
+                    
+            case('extend_arm'):
+                self.move_arm_to_position(pi/2, 0.0, 0.0)
+                self.publishMDState(1)
+                 # Wait 5 seconds until the arm is in position
+                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
+                    self.transition_state(new_state='move_arm_landed2')
+
+            case('move_arm_landed2'):
+                self.move_arm_to_position(pi/2, 0.0, self.arm_offset_angle_q3)
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
@@ -183,6 +207,8 @@ class MissionDirectorPy(Node):
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 if self.first_state_loop:
                     self.get_logger().info(f'Vehicle local position heading: {self.vehicle_local_position.heading}')
+                    self.get_logger().info(f'Takeoff altitude: {self.takeoff_altitude}')
+                    self.first_state_loop = False
                 
                 # check if vehicle has reached takeoff altitude
                 if abs(current_altitude)+0.1 > abs(self.takeoff_altitude) or self.input_state==1:
@@ -205,18 +231,18 @@ class MissionDirectorPy(Node):
                 self.publishOffboardPositionMode()
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 self.move_arm_to_position(pi/3, 0.0, pi/6)
-                self.x_forward_setpoint = self.x_setpoint
+                self.y_forward_setpoint = self.y_setpoint
 
                 # Transition
-                if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time or self.input_state==1:
+                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state==1:
                     self.transition_state('look_for_contact')
-                elif not self.offboard or self.input_state == 2:
-                    self.transition_state('emergency')
+                #elif not self.offboard or self.input_state == 2:
+                #    self.transition_state('emergency')
 
             case('look_for_contact'):
                 self.publishMDState(7)
                 self.publishOffboardPositionMode()
-                self.y_forward_setpoint = self.y_forward_setpoint + self.landing_velocity*self.timer_period # fly forward
+                self.y_forward_setpoint = self.y_forward_setpoint + self.search_velocity*self.timer_period # fly forward
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_forward_setpoint, self.takeoff_altitude, self.vehicle_local_position.heading)
                 
                 if self.counter % self.frequency:
@@ -256,7 +282,7 @@ class MissionDirectorPy(Node):
                 self.move_arm_to_position(0.0, 0.0, 0.0)
                 self.publishMDState(9)
                 self.get_logger().debug('Landing')
-                next_landing_altitude = self.vehicle_local_position.z + self.landing_velocity*self.timer_period
+                next_landing_altitude = self.vehicle_local_position.z - self.landing_velocity*self.timer_period
                 self.publishOffboardPositionMode()
                 self.land()
                 if abs(self.previous_next_landing_altitude - next_landing_altitude) < 0.001:
@@ -272,7 +298,10 @@ class MissionDirectorPy(Node):
             case('emergency'):
                 self.move_arm_to_position(1.578, 0.0, -1.9)
                 self.publishMDState(-1)
-                self.get_logger().warn("Emergency state - no offboard mode")
+                if self.counter% (2*self.frequency) == 0: # Publish message every 2 seconds
+                    self.get_logger().warn("Emergency state - no offboard mode")
+                    self.counter = 0
+                self.counter +=1
 
     def publish_arm_position_commands(self, q1, q2, q3):
         msg = JointState()
@@ -303,9 +332,11 @@ class MissionDirectorPy(Node):
     def controller_servo_callback(self, msg):
         self.servo_reference = msg
 
-    def move_arm_to_position(self, pos1, pos2, pos3): # TODO: Rework for flight
-        q1 = pos1 - 1.7 # Subtract 1.7 rad to account for homing offset in the flight system
-        self.publish_arm_position_commands(q1, pos2, pos3)
+    def move_arm_to_position(self, pos1, pos2, pos3):
+        q1 = pos1 - self.arm_offset_angle_q1
+        q2 = pos2 - self.arm_offset_angle_q2
+        q3 = pos3 - self.arm_offset_angle_q3
+        self.publish_arm_position_commands(q1, q2, q3)
 
     def publishMDState(self, state):
         msg = Int32()

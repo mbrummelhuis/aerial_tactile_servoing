@@ -8,8 +8,8 @@ from ament_index_python.packages import get_package_share_directory
 import os
 import datetime
 
-logging = False
-md_name = 'flight_mission_director_takeoff_land'
+logging = True
+md_name = 'flight_mission_director_contact'
 
 """
 Launch simulation with one arm.
@@ -57,7 +57,8 @@ def generate_launch_description():
             {'frequency': LaunchConfiguration('major_frequency')},
             {'takeoff_altitude': -1.5},
             {'landing_velocity': -0.5},
-            {'hover_time': 20.0},
+            {'search_velocity': 0.3},
+            {'hover_time': 3.0},
             {'position_clip': 3.0}
         ],
         arguments=['--ros-args', '--log-level', 'info']
