@@ -45,7 +45,7 @@ class PoseBasedATS(Node):
         self.publisher_end_effector = self.create_publisher(TwistStamped, '/controller/out/forward_kinematics', 10)
         self.publisher_error = self.create_publisher(TwistStamped, '/controller/out/error', 10)
         self.publisher_ik_check = self.create_publisher(TwistStamped, '/controller/out/ik_check', 10)
-
+        self.publisher_
         # Data
         reference_pose = self.get_parameter('reference_pose').get_parameter_value().double_array_value
         if len(reference_pose) != 3:
@@ -97,7 +97,7 @@ class PoseBasedATS(Node):
 
         # Publish the forward kinematics for reference
         self.publish_transform(P_S, self.publisher_end_effector)
-        P_Sref = P_S @ U_SS
+        P_Sref = P_S @ U_SS # Transform adjustment from sensor frame to inertial frame
 
         # Publish the corrected reference sensor pose in inertial frame in vector form
         self.publish_transform(P_Sref, self.publisher_reference_sensor_pose)

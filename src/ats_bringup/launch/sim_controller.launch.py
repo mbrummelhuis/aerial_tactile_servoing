@@ -38,18 +38,29 @@ def generate_launch_description():
 
     mission_director = Node(
         package='mission_director_py',
-        executable='sim_mission_director',
+        executable='flight_mission_director_contact',
         name='mission_director',
         output='screen',
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
             {'takeoff_altitude': -1.5},
             {'landing_velocity': -0.5},
-            {'hover_time': 5.0}
+            {'search_velocity': 0.3},
+            {'hover_time': 3.0},
+            {'position_clip': 3.0}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
     ld.add_action(mission_director)
+
+    sim_remapper = Node(
+        package='sim_remapper',
+        executable='sim_remapper',
+        name='sim_remapper',
+        output='screen',
+        arguments=['--ros-args', '--log-level', 'info']
+    )
+    ld.add_action(sim_remapper)
 
     controller = Node(
         package='pose_based_ats',
@@ -83,8 +94,6 @@ def generate_launch_description():
         arguments=['--ros-args', '--log-level', 'info'],
         condition=IfCondition(LaunchConfiguration('tactip_enable'))
     )
-    ld.add_action(tactip_driver)
-    
-    
+    ld.add_action(tactip_driver)    
 
     return ld

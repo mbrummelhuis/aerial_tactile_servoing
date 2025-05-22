@@ -154,7 +154,7 @@ class MissionDirectorPy(Node):
                     self.first_state_loop = False
                     self.get_logger().info(f"Got position fix X: {self.x_setpoint} Y: {self.y_setpoint}")
                     self.FSM_state = 'move arm landed'
-            
+
             case('move arm landed'):
                 done = self.move_arm_to_position(1.578, 0.0, -2.10)
                 self.publishMDState(1)
@@ -186,14 +186,14 @@ class MissionDirectorPy(Node):
                     self.get_logger().info("Sending arm command")
                     self.armVehicle()
                     self.counter = 0
-                
+
                 self.publishOffboardPositionMode()
                 self.publishMDState(3)
                 if self.armed and self.offboard:
                     self.get_logger().info("Taking off")
                     self.FSM_state = 'takeoff'
                     self.counter = 0
-            
+
             case('takeoff'): # Takeoff - wait for takeoff altitude
                 self.publishMDState(4)
                 # get current vehicle altitude
