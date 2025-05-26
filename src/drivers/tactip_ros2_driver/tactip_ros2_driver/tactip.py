@@ -36,7 +36,7 @@ class TacTip:
             raise Exception("Sensor params not found")
 
         # create the label encoder/decoder
-        label_encoder = LabelEncoder(self.model_label_params, device='cuda')
+        label_encoder = LabelEncoder(self.model_label_params, device='cpu')
         
         # setup the model
         model = create_model(

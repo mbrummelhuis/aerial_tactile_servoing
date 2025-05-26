@@ -106,21 +106,21 @@ class MissionDirectorPy(Node):
         self.publisher_servo_state = self.create_publisher(JointState, '/servo/in/state', 10)
 
         # set initial state
-        self.FSM_state = 'entrypoint'
+        self.FSM_state = 'wait_for_servo_driver'
         self.input_state = 0
         self.first_state_loop = True
         self.state_start_time = datetime.datetime.now()
         self.armed = False
         self.offboard = False
-        self.contact_depth_threshold = -1.5
+        self.contact_depth_threshold = -2.5
         self.hover_time = self.get_parameter('hover_time').get_parameter_value().double_value
         self.takeoff_altitude = self.get_parameter('takeoff_altitude').get_parameter_value().double_value
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
         self.search_velocity = self.get_parameter('search_velocity').get_parameter_value().double_value
         self.previous_next_landing_altitude = abs(self.takeoff_altitude)+0.1
         self.position_clip = self.get_parameter('position_clip').get_parameter_value().double_value
-        self.kp = 2.
-        self.kd = 0.3
+        self.x_setpoint = 0.0
+        self.y_setpoint = 0.0
 
         self.arm_positions = [0.0, 0.0, 0.0]
         self.arm_velocities = [0.0, 0.0, 0.0]
@@ -169,13 +169,27 @@ class MissionDirectorPy(Node):
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
-                    self.transition_state(new_state='extend_arm')
+                    self.transition_state(new_state='wait_for_arm_offboard')
                     
             case('extend_arm'):
                 self.move_arm_to_position(pi/2, 0.0, 0.0)
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
+                    self.transition_state(new_state='ats_position_landed')
+
+            case('ats_position_landed'):
+                self.move_arm_to_position(pi/3, 0.0, pi/6)
+                self.publishMDState(1)
+                 # Wait 5 seconds until the arm is in position
+                if (datetime.datetime.now() - self.state_start_time).seconds > 10 or self.input_state == 1:
+                    self.transition_state(new_state='move_arm_landed2')
+
+            case('extend_arm_up'):
+                self.move_arm_to_position(0.0, 0.0, 0.0)
+                self.publishMDState(1)
+                 # Wait 5 seconds until the arm is in position
+                if (datetime.datetime.now() - self.state_start_time).seconds > 10 or self.input_state == 1:
                     self.transition_state(new_state='move_arm_landed2')
 
             case('move_arm_landed2'):
@@ -260,7 +274,7 @@ class MissionDirectorPy(Node):
                 if self.counter % self.frequency:
                     self.get_logger().info(f'Tactip depth: {self.tactip_data.twist.linear.z} mm')
                 
-                if self.tactip_data.twist.linear.z < self.contact_depth_threshold: # If tactip depth is deeper than 1.5 mm
+                if abs(self.tactip_data.twist.linear.z) > abs(self.contact_depth_threshold): # If tactip depth is deeper than 1.5 mm
                     self.transition_state('contact')
                 elif not self.offboard or self.input_state == 2:
                     self.transition_state('emergency')
@@ -308,7 +322,7 @@ class MissionDirectorPy(Node):
                 self.disarmVehicle()
 
             case('emergency'):
-                self.move_arm_to_position(1.578, 0.0, -1.9)
+                self.move_arm_to_position(1.578, 0.0, -1.85)
                 self.publishMDState(-1)
                 if self.counter% (2*self.frequency) == 0: # Publish message every 2 seconds
                     self.get_logger().warn("Emergency state - no offboard mode")

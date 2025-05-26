@@ -73,7 +73,7 @@ def generate_launch_description():
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
             {'reference_pose': [0., 0., -0.003]},
-            {'Kp': 2.0},
+            {'Kp': 0.5},
             {'Ki': 0.1},
             {'windup_clip': 5.},
             {'regularization_weight': 0.001}
@@ -90,7 +90,7 @@ def generate_launch_description():
         name="feetech_ros2_interface",
         output="screen",
         parameters=[param_file],
-        arguments=["--ros-args", "--log-level", "info"]
+        arguments=["--ros-args", "--log-level", "fatal"] # Suppress most logs
     )
     ld.add_action(servo_driver)
 
@@ -100,15 +100,14 @@ def generate_launch_description():
         name='tactip_driver',
         output='screen',
         parameters=[
-            {'source': 4},
+            {'source': 0},
             {'frequency': LaunchConfiguration('major_frequency')},
             {'verbose': False},
             {'test_model_time': False},
             {'save_debug_image': False},
             {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')}
         ],
-        arguments=['--ros-args', '--log-level', 'info'],
-        condition=IfCondition(LaunchConfiguration('tactip_enable'))
+        arguments=['--ros-args', '--log-level', 'info']
     )
     ld.add_action(tactip_driver)
     
