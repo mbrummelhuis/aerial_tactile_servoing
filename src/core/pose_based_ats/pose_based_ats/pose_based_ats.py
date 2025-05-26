@@ -8,6 +8,7 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation as R
 
+from std_msgs.msg import Float64
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import JointState
 from px4_msgs.msg import VehicleOdometry, TrajectorySetpoint
@@ -22,9 +23,11 @@ class PoseBasedATS(Node):
         self.declare_parameter('Kp', 3.0)
         self.declare_parameter('Ki', 0.1)
         self.declare_parameter('windup_clip', 10.)
+        self.declare_parameter('regularization_weight', 0.001)
         self.Kp = self.get_parameter('Kp').get_parameter_value().double_value
         self.Ki = self.get_parameter('Ki').get_parameter_value().double_value
         self.windup = self.get_parameter('windup_clip').get_parameter_value().double_value
+        self.reg_weight = self.get_parameter('regularization_weight').get_parameter_value().double_value
 
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -39,13 +42,17 @@ class PoseBasedATS(Node):
         self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.callback_fmu, qos_profile)
 
         # Publishers
-        self.publisher_reference_sensor_pose = self.create_publisher(TwistStamped, '/controller/out/corrected_sensor_pose', 10)
+        self.publisher_reference_sensor_pose = self.create_publisher(TwistStamped, '/controller/out/reference_inertial_sensor_pose', 10)
         self.publisher_servo_positions = self.create_publisher(JointState, '/controller/out/servo_positions', 10)
         self.publisher_drone_ref = self.create_publisher(TrajectorySetpoint, '/controller/out/trajectory_setpoint', 10)
-        self.publisher_end_effector = self.create_publisher(TwistStamped, '/controller/out/forward_kinematics', 10)
+        self.publisher_forward_kinematics = self.create_publisher(TwistStamped, '/controller/out/forward_kinematics', 10)
         self.publisher_error = self.create_publisher(TwistStamped, '/controller/out/error', 10)
         self.publisher_ik_check = self.create_publisher(TwistStamped, '/controller/out/ik_check', 10)
-        self.publisher_
+        self.publisher_correction = self.create_publisher(TwistStamped, '/controller/out/correction', 10)
+
+        self.publisher_ki_error = self.create_publisher(Float64, '/controller/optimizer/ki_error', 10)
+        self.publisher_regularization = self.create_publisher(Float64, '/controller/optimizer/regularization', 10)
+
         # Data
         reference_pose = self.get_parameter('reference_pose').get_parameter_value().double_array_value
         if len(reference_pose) != 3:
@@ -67,21 +74,35 @@ class PoseBasedATS(Node):
         self.servo_state.position = [0., 0., 0.]
         self.vehicle_odometry = VehicleOdometry()
 
+        # Custom weighting matrix for regularization of the simplified case (forcing pitch and roll 0)
         self.weighting_matrix_simplified = np.eye(7)
-        self.weighting_matrix_simplified[0] = 1 # The vehicle states receive neutral penalty
-        self.weighting_matrix_simplified[1] = 1
-        self.weighting_matrix_simplified[2] = 1
-        self.weighting_matrix_simplified[3] = 1
-        self.weighting_matrix_simplified[4] = 0.1 # Lower penalty for moving q1
-        self.weighting_matrix_simplified[5] = 1000. # Higher penalty for moving q2
-        self.weighting_matrix_simplified[6] = 0.1 # Lower penalty for moving q3
+        self.weighting_matrix_simplified[0,0] = 1 # The vehicle states receive neutral penalty
+        self.weighting_matrix_simplified[1,1] = 1
+        self.weighting_matrix_simplified[2,2] = 1
+        self.weighting_matrix_simplified[3,3] = 1
+        self.weighting_matrix_simplified[4,4] = 0.1 # Lower penalty for moving q1
+        self.weighting_matrix_simplified[5,5] = 100. # Higher penalty for moving q2
+        self.weighting_matrix_simplified[6,6] = 0.1 # Lower penalty for moving q3
+
+        # Custom weighting matrix for the regularization of the full kinematics case
+        self.weighting_matrix =  np.eye(9)
+        self.weighting_matrix[0,0] = 1
+        self.weighting_matrix[1,1] = 1
+        self.weighting_matrix[2,2] = 1
+        self.weighting_matrix[3,3] = 10 # Roll - high penalty
+        self.weighting_matrix[4,4] = 10 # Pitch - high penalty
+        self.weighting_matrix[5,5] = 1
+        self.weighting_matrix[6,6] = 0.1 # Q1 - low penalty
+        self.weighting_matrix[7,7] = 10 # Q2 - high penalty
+        self.weighting_matrix[8,8] = 0.1 # Q3 - low penalty
+
 
         # Timer
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
         self.timer = self.create_timer(self.period, self.callback_timer)
 
     # Callbacks
-    def callback_timer(self):
+    def callback_timer_simplified(self):
         # Evaluate the error
         P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x/180.*np.pi, self.tactip.twist.angular.y/180.*np.pi, self.tactip.twist.linear.z/1000.)
         E_Sref = P_SC @ self.P_Cref
@@ -96,7 +117,8 @@ class PoseBasedATS(Node):
         P_S = self.forward_kinematics(self.get_state())
 
         # Publish the forward kinematics for reference
-        self.publish_transform(P_S, self.publisher_end_effector)
+        self.publish_transform(P_S, self.publisher_forward_kinematics)
+        self.publish_transform(U_SS, self.publisher_correction)
         P_Sref = P_S @ U_SS # Transform adjustment from sensor frame to inertial frame
 
         # Publish the corrected reference sensor pose in inertial frame in vector form
@@ -122,22 +144,40 @@ class PoseBasedATS(Node):
             check = self.forward_kinematics_simplified(state_reference)
             self.publish_transform(check, self.publisher_ik_check)
 
+            # Publish kinematic inversion error
+            self.publish_ki_error(self.kinematic_inversion_error(state_reference, P_Sref, self.get_state_simplified()))
+
         elif result[1]!=True:
             self.get_logger().error(f"IK optimization failed to converge with error {result[2]}")
 
-    def callback_timer_old(self):
-        # Evaluate the location of the contact frame in space
-        # The refs can be added like the numbers
-        state = self.get_state()
-        P_C = self.evaluate_P_C(state, 0.0-self.tactip.twist.angular.x, 0.0-self.tactip.twist.angular.y, -0.003-self.tactip.twist.linear.z/1000.)
-        self.publish_transform(P_C, self.publisher_reference_sensor_pose)
+    def callback_timer(self):
+        # Evaluate the error
+        P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x/180.*np.pi, self.tactip.twist.angular.y/180.*np.pi, self.tactip.twist.linear.z/1000.)
+        E_Sref = P_SC @ self.P_Cref
+        self.publish_transform(E_Sref, self.publisher_error)
+        e_sr = self.transformation_to_vector(E_Sref)
 
-        # Run IK on the 
-        ik_result = self.inverse_kinematics(P_C)
-        state_reference = ik_result[0]
-        
-        if ik_result[1]==True:
-            self.get_logger().debug(f"IK optimization converged with value {ik_result[3]}")
+        # Control law TODO: add integral controller
+        u_ss = self.Kp*np.eye(6)@e_sr 
+
+        U_SS = self.vector_to_transformation(u_ss)
+
+        P_S = self.forward_kinematics(self.get_state())
+
+        # Publish the forward kinematics for reference
+        self.publish_transform(P_S, self.publisher_forward_kinematics)
+        self.publish_transform(U_SS, self.publisher_correction)
+        P_Sref = P_S @ U_SS # Transform adjustment from sensor frame to inertial frame
+        #P_Sref = self.forward_kinematics([0.0, 0.0, -1.5, 0.0, 0.0, 0.0, np.pi/3, 0.0, np.pi/6])
+
+        # Publish the corrected reference sensor pose in inertial frame in vector form
+        self.publish_transform(P_Sref, self.publisher_reference_sensor_pose)
+
+        # Inverse kinematics
+        result = self.inverse_kinematics(P_Sref)
+        state_reference = result[0]
+        if result[1]==True:
+            self.get_logger().debug(f"IK optimization converged with value {result[3]}")
             msg = TrajectorySetpoint()
             msg.position = [state_reference[0], state_reference[1], state_reference[2]]
             msg.yaw = state_reference[5]
@@ -149,18 +189,15 @@ class PoseBasedATS(Node):
             msg.header.stamp = self.get_clock().now().to_msg()
             self.publisher_servo_positions.publish(msg)
 
-        elif ik_result[1]!=True:
-            self.get_logger().error(f"IK optimization failed to converge with error {ik_result[2]}")
-        
-        # Publish FK for comparison
-        self.publish_transform(self.forward_kinematics(state_reference), self.publisher_end_effector)
+            # FK for checking
+            check = self.forward_kinematics(state_reference)
+            self.publish_transform(check, self.publisher_ik_check)
 
-        # Publish IK pitch and roll for checking
-        msg = TwistStamped()
-        msg.twist.angular.x = state_reference[3]
-        msg.twist.angular.y = state_reference[4]
-        msg.header.stamp = self.get_clock().now().to_msg()
-        self.publisher_error.publish(msg)
+            # Publish kinematic inversion error
+            self.publish_ki_error(self.kinematic_inversion_error(state_reference, P_Sref, self.get_state()))
+
+        elif result[1]!=True:
+            self.get_logger().error(f"IK optimization failed to converge with error {result[2]}")
 
     def callback_tactip(self, msg):
         self.tactip = msg
@@ -228,18 +265,18 @@ class PoseBasedATS(Node):
         q_2 = state[7]
         q_3 = state[8]
         P_C = np.zeros((4,4))
-        P_C[0,0] = -np.sin(beta)*np.sin(yaw)*np.sin(alpha - q_3)*np.cos(q_1 + roll) + np.sin(beta)*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(alpha - q_3) + np.sin(beta)*np.sin(q_2)*np.cos(yaw)*np.cos(pitch)*np.cos(alpha - q_3) + np.sin(beta)*np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(yaw) + np.sin(beta)*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) - np.sin(yaw)*np.sin(q_2)*np.sin(q_1 + roll)*np.cos(beta) - np.sin(q_2)*np.sin(pitch)*np.cos(beta)*np.cos(yaw)*np.cos(q_1 + roll) + np.cos(beta)*np.cos(yaw)*np.cos(q_2)*np.cos(pitch)
-        P_C[0,1] = -np.sin(yaw)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(q_2) - np.sin(yaw)*np.cos(alpha - q_3)*np.cos(q_1 + roll) - np.sin(q_2)*np.sin(alpha - q_3)*np.cos(yaw)*np.cos(pitch) - np.sin(pitch)*np.sin(alpha - q_3)*np.cos(yaw)*np.cos(q_2)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(alpha - q_3)
-        P_C[0,2] = np.sin(beta)*np.sin(yaw)*np.sin(q_2)*np.sin(q_1 + roll) + np.sin(beta)*np.sin(q_2)*np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) - np.sin(beta)*np.cos(yaw)*np.cos(q_2)*np.cos(pitch) - np.sin(yaw)*np.sin(alpha - q_3)*np.cos(beta)*np.cos(q_1 + roll) + np.sin(yaw)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(q_2)*np.cos(alpha - q_3) + np.sin(q_2)*np.cos(beta)*np.cos(yaw)*np.cos(pitch)*np.cos(alpha - q_3) + np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(yaw) + np.sin(pitch)*np.cos(beta)*np.cos(yaw)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll)
-        P_C[0,3] = 1.0*x_B - 1.0*d*np.sin(beta)*np.sin(yaw)*np.sin(q_2)*np.sin(q_1 + roll) - 1.0*d*np.sin(beta)*np.sin(q_2)*np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) + 1.0*d*np.sin(beta)*np.cos(yaw)*np.cos(q_2)*np.cos(pitch) + 1.0*d*np.sin(yaw)*np.sin(alpha - q_3)*np.cos(beta)*np.cos(q_1 + roll) - 1.0*d*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(q_2)*np.cos(alpha - q_3) - 1.0*d*np.sin(q_2)*np.cos(beta)*np.cos(yaw)*np.cos(pitch)*np.cos(alpha - q_3) - 1.0*d*np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(yaw) - 1.0*d*np.sin(pitch)*np.cos(beta)*np.cos(yaw)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_3)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(q_3) - 0.311*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2) - 0.11*np.sin(yaw)*np.sin(q_1 + roll) - 0.273*np.sin(q_2)*np.cos(yaw)*np.cos(q_3)*np.cos(pitch) - 0.311*np.sin(q_2)*np.cos(yaw)*np.cos(pitch) + 0.273*np.sin(q_3)*np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw) - 0.273*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) - 0.311*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(q_1 + roll) - 0.11*np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll)
-        P_C[1,0] = np.sin(beta)*np.sin(yaw)*np.sin(q_2)*np.cos(pitch)*np.cos(alpha - q_3) + np.sin(beta)*np.sin(yaw)*np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll) + np.sin(beta)*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) + np.sin(beta)*np.sin(alpha - q_3)*np.cos(yaw)*np.cos(q_1 + roll) - np.sin(beta)*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2)*np.cos(alpha - q_3) - np.sin(yaw)*np.sin(q_2)*np.sin(pitch)*np.cos(beta)*np.cos(q_1 + roll) + np.sin(yaw)*np.cos(beta)*np.cos(q_2)*np.cos(pitch) + np.sin(q_2)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(yaw)
-        P_C[1,1] = -np.sin(yaw)*np.sin(q_2)*np.sin(alpha - q_3)*np.cos(pitch) - np.sin(yaw)*np.sin(pitch)*np.sin(alpha - q_3)*np.cos(q_2)*np.cos(q_1 + roll) + np.sin(yaw)*np.sin(pitch)*np.sin(q_1 + roll)*np.cos(alpha - q_3) + np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2) + np.cos(yaw)*np.cos(alpha - q_3)*np.cos(q_1 + roll)
-        P_C[1,2] = np.sin(beta)*np.sin(yaw)*np.sin(q_2)*np.sin(pitch)*np.cos(q_1 + roll) - np.sin(beta)*np.sin(yaw)*np.cos(q_2)*np.cos(pitch) - np.sin(beta)*np.sin(q_2)*np.sin(q_1 + roll)*np.cos(yaw) + np.sin(yaw)*np.sin(q_2)*np.cos(beta)*np.cos(pitch)*np.cos(alpha - q_3) + np.sin(yaw)*np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta) + np.sin(yaw)*np.sin(pitch)*np.cos(beta)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) + np.sin(alpha - q_3)*np.cos(beta)*np.cos(yaw)*np.cos(q_1 + roll) - np.sin(q_1 + roll)*np.cos(beta)*np.cos(yaw)*np.cos(q_2)*np.cos(alpha - q_3)
-        P_C[1,3] = 1.0*y_B - 1.0*d*np.sin(beta)*np.sin(yaw)*np.sin(q_2)*np.sin(pitch)*np.cos(q_1 + roll) + 1.0*d*np.sin(beta)*np.sin(yaw)*np.cos(q_2)*np.cos(pitch) + 1.0*d*np.sin(beta)*np.sin(q_2)*np.sin(q_1 + roll)*np.cos(yaw) - 1.0*d*np.sin(yaw)*np.sin(q_2)*np.cos(beta)*np.cos(pitch)*np.cos(alpha - q_3) - 1.0*d*np.sin(yaw)*np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta) - 1.0*d*np.sin(yaw)*np.sin(pitch)*np.cos(beta)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) - 1.0*d*np.sin(alpha - q_3)*np.cos(beta)*np.cos(yaw)*np.cos(q_1 + roll) + 1.0*d*np.sin(q_1 + roll)*np.cos(beta)*np.cos(yaw)*np.cos(q_2)*np.cos(alpha - q_3) - 0.273*np.sin(yaw)*np.sin(q_2)*np.cos(q_3)*np.cos(pitch) - 0.311*np.sin(yaw)*np.sin(q_2)*np.cos(pitch) + 0.273*np.sin(yaw)*np.sin(q_3)*np.sin(pitch)*np.sin(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) - 0.311*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(q_1 + roll) - 0.11*np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + 0.273*np.sin(q_3)*np.cos(yaw)*np.cos(q_1 + roll) + 0.273*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2)*np.cos(q_3) + 0.311*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2) + 0.11*np.sin(q_1 + roll)*np.cos(yaw)
-        P_C[2,0] = -np.sin(beta)*np.sin(q_2)*np.sin(pitch)*np.cos(alpha - q_3) + np.sin(beta)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(pitch) + np.sin(beta)*np.cos(q_2)*np.cos(pitch)*np.cos(alpha - q_3)*np.cos(q_1 + roll) - np.sin(q_2)*np.cos(beta)*np.cos(pitch)*np.cos(q_1 + roll) - np.sin(pitch)*np.cos(beta)*np.cos(q_2)
-        P_C[2,1] = np.sin(q_2)*np.sin(pitch)*np.sin(alpha - q_3) - np.sin(alpha - q_3)*np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(pitch)*np.cos(alpha - q_3)
-        P_C[2,2] = np.sin(beta)*np.sin(q_2)*np.cos(pitch)*np.cos(q_1 + roll) + np.sin(beta)*np.sin(pitch)*np.cos(q_2) - np.sin(q_2)*np.sin(pitch)*np.cos(beta)*np.cos(alpha - q_3) + np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(pitch) + np.cos(beta)*np.cos(q_2)*np.cos(pitch)*np.cos(alpha - q_3)*np.cos(q_1 + roll)
-        P_C[2,3] = 1.0*z_B - 1.0*d*np.sin(beta)*np.sin(q_2)*np.cos(pitch)*np.cos(q_1 + roll) - 1.0*d*np.sin(beta)*np.sin(pitch)*np.cos(q_2) + 1.0*d*np.sin(q_2)*np.sin(pitch)*np.cos(beta)*np.cos(alpha - q_3) - 1.0*d*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(pitch) - 1.0*d*np.cos(beta)*np.cos(q_2)*np.cos(pitch)*np.cos(alpha - q_3)*np.cos(q_1 + roll) + 0.273*np.sin(q_2)*np.sin(pitch)*np.cos(q_3) + 0.311*np.sin(q_2)*np.sin(pitch) + 0.273*np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch) - 0.273*np.cos(q_2)*np.cos(q_3)*np.cos(pitch)*np.cos(q_1 + roll) - 0.311*np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll) - 0.11*np.cos(pitch)*np.cos(q_1 + roll)
+        P_C[0,0] = np.sin(beta)*np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(yaw) + np.sin(beta)*np.sin(pitch)*np.cos(q_2)*np.cos(yaw)*np.cos(alpha - q_3)*np.cos(q_1 + roll) + np.sin(beta)*np.sin(q_2)*np.cos(pitch)*np.cos(yaw)*np.cos(alpha - q_3) - np.sin(beta)*np.sin(yaw)*np.sin(alpha - q_3)*np.cos(q_1 + roll) + np.sin(beta)*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(alpha - q_3) - np.sin(pitch)*np.sin(q_2)*np.cos(beta)*np.cos(yaw)*np.cos(q_1 + roll) - np.sin(q_2)*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(beta) + np.cos(beta)*np.cos(pitch)*np.cos(q_2)*np.cos(yaw)
+        P_C[0,1] = -np.sin(pitch)*np.sin(alpha - q_3)*np.cos(q_2)*np.cos(yaw)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(alpha - q_3) - np.sin(q_2)*np.sin(alpha - q_3)*np.cos(pitch)*np.cos(yaw) - np.sin(yaw)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(q_2) - np.sin(yaw)*np.cos(alpha - q_3)*np.cos(q_1 + roll)
+        P_C[0,2] = np.sin(beta)*np.sin(pitch)*np.sin(q_2)*np.cos(yaw)*np.cos(q_1 + roll) + np.sin(beta)*np.sin(q_2)*np.sin(yaw)*np.sin(q_1 + roll) - np.sin(beta)*np.cos(pitch)*np.cos(q_2)*np.cos(yaw) + np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(yaw) + np.sin(pitch)*np.cos(beta)*np.cos(q_2)*np.cos(yaw)*np.cos(alpha - q_3)*np.cos(q_1 + roll) + np.sin(q_2)*np.cos(beta)*np.cos(pitch)*np.cos(yaw)*np.cos(alpha - q_3) - np.sin(yaw)*np.sin(alpha - q_3)*np.cos(beta)*np.cos(q_1 + roll) + np.sin(yaw)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(q_2)*np.cos(alpha - q_3)
+        P_C[0,3] = -0.11*np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) - 0.11*np.sin(yaw)*np.sin(q_1 + roll) - 0.311*np.sin(pitch)*np.cos(q_2)*np.cos(yaw)*np.cos(q_1 + roll) - 0.311*np.sin(q_2)*np.cos(pitch)*np.cos(yaw) - 0.311*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2) + 0.273*np.sin(pitch)*np.sin(q_3)*np.sin(q_1 + roll)*np.cos(yaw) - 0.273*np.sin(pitch)*np.cos(q_2)*np.cos(q_3)*np.cos(yaw)*np.cos(q_1 + roll) - 0.273*np.sin(q_2)*np.cos(pitch)*np.cos(q_3)*np.cos(yaw) - 0.273*np.sin(q_3)*np.sin(yaw)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(q_3) + x_B - d*np.sin(beta)*np.sin(pitch)*np.sin(q_2)*np.cos(yaw)*np.cos(q_1 + roll) - d*np.sin(beta)*np.sin(q_2)*np.sin(yaw)*np.sin(q_1 + roll) + d*np.sin(beta)*np.cos(pitch)*np.cos(q_2)*np.cos(yaw) - d*np.sin(pitch)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(yaw) - d*np.sin(pitch)*np.cos(beta)*np.cos(q_2)*np.cos(yaw)*np.cos(alpha - q_3)*np.cos(q_1 + roll) - d*np.sin(q_2)*np.cos(beta)*np.cos(pitch)*np.cos(yaw)*np.cos(alpha - q_3) + d*np.sin(yaw)*np.sin(alpha - q_3)*np.cos(beta)*np.cos(q_1 + roll) - d*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(q_2)*np.cos(alpha - q_3)
+        P_C[1,0] = np.sin(beta)*np.sin(pitch)*np.sin(yaw)*np.sin(alpha - q_3)*np.sin(q_1 + roll) + np.sin(beta)*np.sin(pitch)*np.sin(yaw)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) + np.sin(beta)*np.sin(q_2)*np.sin(yaw)*np.cos(pitch)*np.cos(alpha - q_3) + np.sin(beta)*np.sin(alpha - q_3)*np.cos(yaw)*np.cos(q_1 + roll) - np.sin(beta)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(yaw)*np.cos(alpha - q_3) - np.sin(pitch)*np.sin(q_2)*np.sin(yaw)*np.cos(beta)*np.cos(q_1 + roll) + np.sin(q_2)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(yaw) + np.sin(yaw)*np.cos(beta)*np.cos(pitch)*np.cos(q_2)
+        P_C[1,1] = -np.sin(pitch)*np.sin(yaw)*np.sin(alpha - q_3)*np.cos(q_2)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(alpha - q_3) - np.sin(q_2)*np.sin(yaw)*np.sin(alpha - q_3)*np.cos(pitch) + np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(yaw) + np.cos(yaw)*np.cos(alpha - q_3)*np.cos(q_1 + roll)
+        P_C[1,2] = np.sin(beta)*np.sin(pitch)*np.sin(q_2)*np.sin(yaw)*np.cos(q_1 + roll) - np.sin(beta)*np.sin(q_2)*np.sin(q_1 + roll)*np.cos(yaw) - np.sin(beta)*np.sin(yaw)*np.cos(pitch)*np.cos(q_2) + np.sin(pitch)*np.sin(yaw)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta) + np.sin(pitch)*np.sin(yaw)*np.cos(beta)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) + np.sin(q_2)*np.sin(yaw)*np.cos(beta)*np.cos(pitch)*np.cos(alpha - q_3) + np.sin(alpha - q_3)*np.cos(beta)*np.cos(yaw)*np.cos(q_1 + roll) - np.sin(q_1 + roll)*np.cos(beta)*np.cos(q_2)*np.cos(yaw)*np.cos(alpha - q_3)
+        P_C[1,3] = -0.11*np.sin(pitch)*np.sin(yaw)*np.cos(q_1 + roll) + 0.11*np.sin(q_1 + roll)*np.cos(yaw) - 0.311*np.sin(pitch)*np.sin(yaw)*np.cos(q_2)*np.cos(q_1 + roll) - 0.311*np.sin(q_2)*np.sin(yaw)*np.cos(pitch) + 0.311*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(yaw) + 0.273*np.sin(pitch)*np.sin(q_3)*np.sin(yaw)*np.sin(q_1 + roll) - 0.273*np.sin(pitch)*np.sin(yaw)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) - 0.273*np.sin(q_2)*np.sin(yaw)*np.cos(pitch)*np.cos(q_3) + 0.273*np.sin(q_3)*np.cos(yaw)*np.cos(q_1 + roll) + 0.273*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(q_3)*np.cos(yaw) + y_B - d*np.sin(beta)*np.sin(pitch)*np.sin(q_2)*np.sin(yaw)*np.cos(q_1 + roll) + d*np.sin(beta)*np.sin(q_2)*np.sin(q_1 + roll)*np.cos(yaw) + d*np.sin(beta)*np.sin(yaw)*np.cos(pitch)*np.cos(q_2) - d*np.sin(pitch)*np.sin(yaw)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta) - d*np.sin(pitch)*np.sin(yaw)*np.cos(beta)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) - d*np.sin(q_2)*np.sin(yaw)*np.cos(beta)*np.cos(pitch)*np.cos(alpha - q_3) - d*np.sin(alpha - q_3)*np.cos(beta)*np.cos(yaw)*np.cos(q_1 + roll) + d*np.sin(q_1 + roll)*np.cos(beta)*np.cos(q_2)*np.cos(yaw)*np.cos(alpha - q_3)
+        P_C[2,0] = -np.sin(beta)*np.sin(pitch)*np.sin(q_2)*np.cos(alpha - q_3) + np.sin(beta)*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(pitch) + np.sin(beta)*np.cos(pitch)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll) - np.sin(pitch)*np.cos(beta)*np.cos(q_2) - np.sin(q_2)*np.cos(beta)*np.cos(pitch)*np.cos(q_1 + roll)
+        P_C[2,1] = np.sin(pitch)*np.sin(q_2)*np.sin(alpha - q_3) - np.sin(alpha - q_3)*np.cos(pitch)*np.cos(q_2)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(pitch)*np.cos(alpha - q_3)
+        P_C[2,2] = np.sin(beta)*np.sin(pitch)*np.cos(q_2) + np.sin(beta)*np.sin(q_2)*np.cos(pitch)*np.cos(q_1 + roll) - np.sin(pitch)*np.sin(q_2)*np.cos(beta)*np.cos(alpha - q_3) + np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(pitch) + np.cos(beta)*np.cos(pitch)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll)
+        P_C[2,3] = -0.11*np.cos(pitch)*np.cos(q_1 + roll) + 0.311*np.sin(pitch)*np.sin(q_2) - 0.311*np.cos(pitch)*np.cos(q_2)*np.cos(q_1 + roll) + 0.273*np.sin(pitch)*np.sin(q_2)*np.cos(q_3) + 0.273*np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch) - 0.273*np.cos(pitch)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) + z_B - d*np.sin(beta)*np.sin(pitch)*np.cos(q_2) - d*np.sin(beta)*np.sin(q_2)*np.cos(pitch)*np.cos(q_1 + roll) + d*np.sin(pitch)*np.sin(q_2)*np.cos(beta)*np.cos(alpha - q_3) - d*np.sin(alpha - q_3)*np.sin(q_1 + roll)*np.cos(beta)*np.cos(pitch) - d*np.cos(beta)*np.cos(pitch)*np.cos(q_2)*np.cos(alpha - q_3)*np.cos(q_1 + roll)
         P_C[3,0] = 0
         P_C[3,1] = 0
         P_C[3,2] = 0
@@ -247,9 +284,9 @@ class PoseBasedATS(Node):
 
         return P_C
 
+    ''' Get HTM describing end-effector (sensor) pose in inertial frame -> P_S, evaluated at latest state
+    '''
     def forward_kinematics(self, state):
-        ''' Get HTM describing end-effector (sensor) pose in inertial frame, evaluated at latest state
-        '''
         x_B = state[0]
         y_B = state[1]
         z_B = state[2]
@@ -261,18 +298,18 @@ class PoseBasedATS(Node):
         q_3 = state[8]
 
         P_S = np.zeros((4,4))
-        P_S[0,0] = -(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_2) + np.cos(yaw)*np.cos(q_2)*np.cos(pitch)
-        P_S[0,1] = -(-(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_2) - np.sin(q_2)*np.cos(yaw)*np.cos(pitch))*np.sin(q_3) + (-np.sin(yaw)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_3)
-        P_S[0,2] = -(-(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_2) - np.sin(q_2)*np.cos(yaw)*np.cos(pitch))*np.cos(q_3) - (-np.sin(yaw)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw))*np.sin(q_3)
-        P_S[0,3] = -0.11*np.sin(yaw)*np.sin(q_1 + roll) - 0.11*np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) - 0.311*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2) - 0.311*np.sin(q_2)*np.cos(yaw)*np.cos(pitch) - 0.311*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_3)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(q_3) - 0.273*np.sin(q_2)*np.cos(yaw)*np.cos(q_3)*np.cos(pitch) + 0.273*np.sin(q_3)*np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw) - 0.273*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) + x_B
-        P_S[1,0] = (-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.sin(q_2) + np.sin(yaw)*np.cos(q_2)*np.cos(pitch)
-        P_S[1,1] = -((-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_2) - np.sin(yaw)*np.sin(q_2)*np.cos(pitch))*np.sin(q_3) + (np.sin(yaw)*np.sin(pitch)*np.sin(q_1 + roll) + np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_3)
-        P_S[1,2] = -((-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_2) - np.sin(yaw)*np.sin(q_2)*np.cos(pitch))*np.cos(q_3) - (np.sin(yaw)*np.sin(pitch)*np.sin(q_1 + roll) + np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_3)
-        P_S[1,3] = -0.11*np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + 0.11*np.sin(q_1 + roll)*np.cos(yaw) - 0.311*np.sin(yaw)*np.sin(q_2)*np.cos(pitch) - 0.311*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(q_1 + roll) + 0.311*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2) - 0.273*np.sin(yaw)*np.sin(q_2)*np.cos(q_3)*np.cos(pitch) + 0.273*np.sin(yaw)*np.sin(q_3)*np.sin(pitch)*np.sin(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) + 0.273*np.sin(q_3)*np.cos(yaw)*np.cos(q_1 + roll) + 0.273*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2)*np.cos(q_3) + y_B
-        P_S[2,0] = -np.sin(q_2)*np.cos(pitch)*np.cos(q_1 + roll) - np.sin(pitch)*np.cos(q_2)
-        P_S[2,1] = -(np.sin(q_2)*np.sin(pitch) - np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll))*np.sin(q_3) + np.sin(q_1 + roll)*np.cos(q_3)*np.cos(pitch)
-        P_S[2,2] = -(np.sin(q_2)*np.sin(pitch) - np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll))*np.cos(q_3) - np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch)
-        P_S[2,3] = -0.11*np.cos(pitch)*np.cos(q_1 + roll) + 0.311*np.sin(q_2)*np.sin(pitch) - 0.311*np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll) + 0.273*np.sin(q_2)*np.sin(pitch)*np.cos(q_3) + 0.273*np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch) - 0.273*np.cos(q_2)*np.cos(q_3)*np.cos(pitch)*np.cos(q_1 + roll) + z_B
+        P_S[0,0] = -(np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) + np.sin(yaw)*np.sin(q_1 + roll))*np.sin(q_2) + np.cos(pitch)*np.cos(q_2)*np.cos(yaw)
+        P_S[0,1] = -(-(np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) + np.sin(yaw)*np.sin(q_1 + roll))*np.cos(q_2) - np.sin(q_2)*np.cos(pitch)*np.cos(yaw))*np.sin(q_3) + (np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw) - np.sin(yaw)*np.cos(q_1 + roll))*np.cos(q_3)
+        P_S[0,2] = -(-(np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) + np.sin(yaw)*np.sin(q_1 + roll))*np.cos(q_2) - np.sin(q_2)*np.cos(pitch)*np.cos(yaw))*np.cos(q_3) - (np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw) - np.sin(yaw)*np.cos(q_1 + roll))*np.sin(q_3)
+        P_S[0,3] = -0.11*np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) - 0.11*np.sin(yaw)*np.sin(q_1 + roll) - 0.311*np.sin(pitch)*np.cos(q_2)*np.cos(yaw)*np.cos(q_1 + roll) - 0.311*np.sin(q_2)*np.cos(pitch)*np.cos(yaw) - 0.311*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2) + 0.273*np.sin(pitch)*np.sin(q_3)*np.sin(q_1 + roll)*np.cos(yaw) - 0.273*np.sin(pitch)*np.cos(q_2)*np.cos(q_3)*np.cos(yaw)*np.cos(q_1 + roll) - 0.273*np.sin(q_2)*np.cos(pitch)*np.cos(q_3)*np.cos(yaw) - 0.273*np.sin(q_3)*np.sin(yaw)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(q_3) + x_B
+        P_S[1,0] = (-np.sin(pitch)*np.sin(yaw)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.sin(q_2) + np.sin(yaw)*np.cos(pitch)*np.cos(q_2)
+        P_S[1,1] = -((-np.sin(pitch)*np.sin(yaw)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_2) - np.sin(q_2)*np.sin(yaw)*np.cos(pitch))*np.sin(q_3) + (np.sin(pitch)*np.sin(yaw)*np.sin(q_1 + roll) + np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_3)
+        P_S[1,2] = -((-np.sin(pitch)*np.sin(yaw)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_2) - np.sin(q_2)*np.sin(yaw)*np.cos(pitch))*np.cos(q_3) - (np.sin(pitch)*np.sin(yaw)*np.sin(q_1 + roll) + np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_3)
+        P_S[1,3] = -0.11*np.sin(pitch)*np.sin(yaw)*np.cos(q_1 + roll) + 0.11*np.sin(q_1 + roll)*np.cos(yaw) - 0.311*np.sin(pitch)*np.sin(yaw)*np.cos(q_2)*np.cos(q_1 + roll) - 0.311*np.sin(q_2)*np.sin(yaw)*np.cos(pitch) + 0.311*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(yaw) + 0.273*np.sin(pitch)*np.sin(q_3)*np.sin(yaw)*np.sin(q_1 + roll) - 0.273*np.sin(pitch)*np.sin(yaw)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) - 0.273*np.sin(q_2)*np.sin(yaw)*np.cos(pitch)*np.cos(q_3) + 0.273*np.sin(q_3)*np.cos(yaw)*np.cos(q_1 + roll) + 0.273*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(q_3)*np.cos(yaw) + y_B
+        P_S[2,0] = -np.sin(pitch)*np.cos(q_2) - np.sin(q_2)*np.cos(pitch)*np.cos(q_1 + roll)
+        P_S[2,1] = -(np.sin(pitch)*np.sin(q_2) - np.cos(pitch)*np.cos(q_2)*np.cos(q_1 + roll))*np.sin(q_3) + np.sin(q_1 + roll)*np.cos(pitch)*np.cos(q_3)
+        P_S[2,2] = -(np.sin(pitch)*np.sin(q_2) - np.cos(pitch)*np.cos(q_2)*np.cos(q_1 + roll))*np.cos(q_3) - np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch)
+        P_S[2,3] = -0.11*np.cos(pitch)*np.cos(q_1 + roll) + 0.311*np.sin(pitch)*np.sin(q_2) - 0.311*np.cos(pitch)*np.cos(q_2)*np.cos(q_1 + roll) + 0.273*np.sin(pitch)*np.sin(q_2)*np.cos(q_3) + 0.273*np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch) - 0.273*np.cos(pitch)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) + z_B
         P_S[3,0] = 0
         P_S[3,1] = 0
         P_S[3,2] = 0
@@ -420,8 +457,23 @@ class PoseBasedATS(Node):
              [0., 0., 0., 1.]])
         return HTM
 
+    def kinematic_inversion_error(self, state, P_des, current_state):
+        P_S = self.forward_kinematics_simplified(state)
+        # Position error (Euclidean distance)
+        pos_err = np.linalg.norm(P_S[:3, 3] - P_des[:3, 3])
+
+        # Orientation error (rotation angle difference)
+        R1 = P_S[:3, :3]
+        R2 = P_des[:3, :3]
+        delta_R = R.from_matrix(R1.T @ R2)
+        ang_err = np.linalg.norm(delta_R.as_rotvec())
+
+        ki_error = pos_err**2 + ang_err**2 # Total inverse kinematic error
+        regularization = self.reg_weight * np.linalg.norm(state - current_state)**2
+        return [ki_error, regularization]
+
     # Inverse kinematics stuff
-    def ik_objective(self, state, P_des, current_state, reg_weight=1e-3):
+    def ik_objective(self, state, P_des, current_state):
         P_S = self.forward_kinematics(state)
 
         # Position error (Euclidean distance)
@@ -434,10 +486,10 @@ class PoseBasedATS(Node):
         ang_err = np.linalg.norm(delta_R.as_rotvec())
 
         error = pos_err**2 + ang_err**2
-        regularization = reg_weight * np.linalg.norm(state - current_state)**2
+        regularization = self.reg_weight * np.linalg.norm(state - current_state)**2
         return error + regularization
     
-    def ik_objective_simplified(self, simplified_state, P_des, current_state, reg_weight=1e-3):
+    def ik_objective_simplified(self, simplified_state, P_des, current_state):
         P_S = self.forward_kinematics_simplified(simplified_state)
 
         # Position error (Euclidean distance)
@@ -448,11 +500,12 @@ class PoseBasedATS(Node):
         R2 = P_des[:3, :3]
         delta_R = R.from_matrix(R1.T @ R2)
         ang_err = np.linalg.norm(delta_R.as_rotvec())
+        #ang_err = np.linalg.norm(P_S[:3, :3] - P_des[:3, :3])
 
         error = pos_err**2 + ang_err**2 # Total inverse kinematic error
 
         regularization = np.matmul((simplified_state-current_state), np.matmul(self.weighting_matrix_simplified, (simplified_state-current_state)))
-        return error + reg_weight*regularization
+        return error + self.reg_weight*regularization
 
     def inverse_kinematics(self, P_des, bounds=None):
         # Bounds
@@ -505,6 +558,14 @@ class PoseBasedATS(Node):
 
         msg.header.stamp = self.get_clock().now().to_msg()
         publisher.publish(msg)
+
+    def publish_ki_error(self, error):
+        msg = Float64()
+        msg.data = error[0]
+        self.publisher_ki_error.publish(msg)
+
+        msg.data = error[1]
+        self.publisher_regularization.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)

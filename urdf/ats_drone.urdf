@@ -1,0 +1,103 @@
+<?xml version="1.0"?>
+<robot name="ats_drone">
+
+  <!-- NED ground frame -->
+  <link name="base"/>
+  <link name="ned" />
+
+  <!-- LINKSs -->
+  <!-- Floating base: assumed to be published separately (e.g., from VIO or mocap) -->
+  <link name="body">
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- Frame 0: Origin at OB -->
+  <link name="frame_0">
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/> <!-- pi/2 about yB -->
+      <inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- Frame 1: Shoulder joint about Z1 -->
+  <link name="frame_1">
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0.11 0 0" rpy="-1.5708 0 0"/> <!-- -pi/2 about x0 -->
+      <inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- Frame 2: Elbow joint about Z2 -->
+  <link name="frame_2">
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0.311 0 0" rpy="1.5708 0 0"/> <!-- pi/2 about x1 -->
+      <inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- Frame S: End effector/sensor frame -->
+  <link name="sensor">
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0.273 0 0" rpy="0 -1.5708 0"/> <!-- -pi/2 about y2 -->
+      <inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+  </link>
+
+  <!-- JOINTS -->
+  <!-- Joint: base to ned -->
+  <joint name="base_to_ned" type="fixed">
+    <parent link="base"/>
+    <child link="ned"/>
+    <origin xyz="0 0 0" rpy="3.14 0 0"/>
+  </joint>
+  <!-- Floating joint - body in NED -->
+  <joint name="body_to_ned" type="floating">
+    <parent link="ned"/>
+    <child link="body"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+
+  <!-- Joint 0: body to frame_0 -->
+  <joint name="body_to_frame_0" type="fixed">
+    <parent link="body"/>
+    <child link="frame_0"/>
+    <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+  </joint>
+
+  <!-- Joint 1: pivot joint -->
+  <joint name="pivot" type="revolute">
+    <parent link="frame_0"/>
+    <child link="frame_1"/>
+    <origin xyz="0.11 0 0" rpy="-1.5708 0 0"/>   <!-- -pi/2 about y2 -->
+    <axis xyz="0 0 1"/>                 <!-- Default: z axis -->
+    <limit lower="-3.14" upper="3.14" effort="1.0" velocity="1.0"/>
+  </joint>
+
+  <!-- Joint 2: Q1 from manipulator_base to frame 1 -->
+  <joint name="shoulder" type="revolute">
+    <parent link="frame_1"/>
+    <child link="frame_2"/>
+    <origin xyz="0.311 0 0" rpy="1.5708 0 0"/>
+    <axis xyz="0 0 1"/>                 <!-- Default: pitch axis -->
+    <limit lower="-0.39" upper="0.39" effort="1.0" velocity="1.0"/> <!-- pi/8 -->
+  </joint>
+
+  <!-- Joint 3 -->
+  <joint name="elbow" type="revolute">
+    <parent link="frame_2"/>
+    <child link="sensor"/>
+    <origin xyz="0.273 0 0" rpy="0 -1.5708 0"/>
+    <axis xyz="0 0 1"/>                 <!-- Default: roll axis -->
+    <limit lower="-1.57" upper="1.57" effort="1.0" velocity="1.0"/>
+  </joint>
+
+</robot>

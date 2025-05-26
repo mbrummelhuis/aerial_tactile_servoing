@@ -70,7 +70,7 @@ class MissionDirectorPy(Node):
         # Controller subscriber
         self.subscriber_controller = self.create_subscription(TrajectorySetpoint, '/controller/out/trajectory_setpoint', self.controller_callback, 10)
         self.subscriber_controller_servo = self.create_subscription(JointState, '/controller/out/servo_positions', self.controller_servo_callback, 10)
-        self.subscriber_controller_reference_sensor_pose = self.create_subscription(TwistStamped, '/fmu/out/corrected_sensor_pose', self.controller_pose_callback,10)
+        self.subscriber_controller_reference_sensor_pose = self.create_subscription(TwistStamped, '/controller/out/reference_inertial_sensor_pose', self.controller_pose_callback,10)
         self.subscriber_controller_error = self.create_subscription(TwistStamped, '/controller/out/error', self.controller_error_callback, 10)
         self.subscriber_controller_FK = self.create_subscription(TwistStamped, '/controller/out/forward_kinematics', self.controller_FK_callback, 10)
         self.subscriber_controller_ik_check = self.create_subscription(TwistStamped, '/controller/out/ik_check', self.controller_ik_check_callback, 10)
@@ -183,7 +183,7 @@ class MissionDirectorPy(Node):
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
-                    self.transition_state(new_state='sim_arm_offboard')
+                    self.transition_state(new_state='wait_for_arm_offboard')
 
             case('wait_for_arm_offboard'):
                 self.publishOffboardPositionMode()
@@ -248,8 +248,8 @@ class MissionDirectorPy(Node):
                 # Transition
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state==1:
                     self.transition_state('look_for_contact')
-                #elif not self.offboard or self.input_state == 2:
-                #    self.transition_state('emergency')
+                elif not self.offboard or self.input_state == 2:
+                    self.transition_state('emergency')
 
             case('look_for_contact'):
                 self.publishMDState(7)

@@ -17,6 +17,7 @@
       max_speeds: [0.35, 0.35, 0.35] # rad/s
       max_currents: [100., 100., 100.] #, 100., 100., 100., 100., 100., 100., 100.]
       gear_ratios: [4.0, 1.0, 2.0]
+      start_offsets: [1.7, 0.0, -1.9] # rad
       proportional_gains: [0.3, 0.1, 0.2]
       derivative_gains: [0.1, 0.03, 0.03]
       integral_gains: [0.0, 0.0, 0.0]

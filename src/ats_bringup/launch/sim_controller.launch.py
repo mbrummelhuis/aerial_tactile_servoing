@@ -47,7 +47,7 @@ def generate_launch_description():
             {'landing_velocity': -0.5},
             {'search_velocity': 0.3},
             {'hover_time': 3.0},
-            {'position_clip': 3.0}
+            {'position_clip': 10.0}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
@@ -70,9 +70,10 @@ def generate_launch_description():
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
             {'reference_pose': [0., 0., -0.003]},
-            {'Kp': 3.0},
+            {'Kp': 2.0},
             {'Ki': 0.1},
-            {'windup_clip': 5.}
+            {'windup_clip': 5.},
+            {'regularization_weight': 0.001}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
