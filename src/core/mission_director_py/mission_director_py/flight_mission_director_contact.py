@@ -112,7 +112,7 @@ class MissionDirectorPy(Node):
         self.state_start_time = datetime.datetime.now()
         self.armed = False
         self.offboard = False
-        self.contact_depth_threshold = -2.5
+        self.contact_depth_threshold = -1.0
         self.hover_time = self.get_parameter('hover_time').get_parameter_value().double_value
         self.takeoff_altitude = self.get_parameter('takeoff_altitude').get_parameter_value().double_value
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
@@ -297,8 +297,8 @@ class MissionDirectorPy(Node):
                     self.first_state_loop = False
 
                 # Transition 1: Lost contact
-                if self.tactip_data.twist.linear.z > self.contact_depth_threshold:
-                    self.transition_state('look_for_contact')
+                #if self.tactip_data.twist.linear.z > self.contact_depth_threshold:
+                #    self.transition_state('look_for_contact')
                 elif (datetime.datetime.now() - self.state_start_time).seconds > 150. or self.input_state==1:
                     self.transition_state('land')
                 elif not self.offboard or self.input_state == 2:

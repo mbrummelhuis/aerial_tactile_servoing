@@ -26,7 +26,7 @@ class PoseBasedATS(Node):
         self.declare_parameter('regularization_weight', 0.001)
         self.Kp = self.get_parameter('Kp').get_parameter_value().double_value
         self.Ki = self.get_parameter('Ki').get_parameter_value().double_value
-        self.integrator = 0.0
+        self.integrator = np.zeros(6)
         self.windup = self.get_parameter('windup_clip').get_parameter_value().double_value
         self.reg_weight = self.get_parameter('regularization_weight').get_parameter_value().double_value
 
@@ -89,15 +89,15 @@ class PoseBasedATS(Node):
 
         # Custom weighting matrix for the regularization of the full kinematics case
         self.weighting_matrix =  np.eye(9)
-        self.weighting_matrix[0,0] = 1
-        self.weighting_matrix[1,1] = 1
-        self.weighting_matrix[2,2] = 1
+        self.weighting_matrix[0,0] = 0.1
+        self.weighting_matrix[1,1] = 0.1
+        self.weighting_matrix[2,2] = 0.1
         self.weighting_matrix[3,3] = 10 # Roll - high penalty
         self.weighting_matrix[4,4] = 10 # Pitch - high penalty
         self.weighting_matrix[5,5] = 1
-        self.weighting_matrix[6,6] = 0.1 # Q1 - low penalty
+        self.weighting_matrix[6,6] = 10 # Q1 - low penalty
         self.weighting_matrix[7,7] = 10 # Q2 - high penalty
-        self.weighting_matrix[8,8] = 0.1 # Q3 - low penalty
+        self.weighting_matrix[8,8] = 10 # Q3 - low penalty
 
         # Timer
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
@@ -162,7 +162,7 @@ class PoseBasedATS(Node):
 
         # Control law TODO: add integral controller
         self.integrator += self.Ki*np.eye(6)@e_sr
-        u_ss = self.Kp*np.eye(6)@e_sr + np.clip(self.integrator,-self.windup*np.ones((6,1)), self.windup*np.ones((6,1)))
+        u_ss = self.Kp*np.eye(6)@e_sr + np.clip(self.integrator,-self.windup*np.ones((6)), self.windup*np.ones((6)))
 
         U_SS = self.vector_to_transformation(u_ss)
 
@@ -180,6 +180,7 @@ class PoseBasedATS(Node):
         # Inverse kinematics
         result = self.inverse_kinematics(P_Sref)
         state_reference = result[0]
+        self.get_logger().info(f"State reference: {state_reference}")
         if result[1]==True:
             self.get_logger().debug(f"IK optimization converged with value {result[3]}")
             msg = TrajectorySetpoint()
