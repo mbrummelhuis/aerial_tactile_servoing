@@ -26,6 +26,7 @@ class PoseBasedATS(Node):
         self.declare_parameter('regularization_weight', 0.001)
         self.Kp = self.get_parameter('Kp').get_parameter_value().double_value
         self.Ki = self.get_parameter('Ki').get_parameter_value().double_value
+        self.integrator = 0.0
         self.windup = self.get_parameter('windup_clip').get_parameter_value().double_value
         self.reg_weight = self.get_parameter('regularization_weight').get_parameter_value().double_value
 
@@ -42,13 +43,15 @@ class PoseBasedATS(Node):
         self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.callback_fmu, qos_profile)
 
         # Publishers
-        self.publisher_reference_sensor_pose = self.create_publisher(TwistStamped, '/controller/out/reference_inertial_sensor_pose', 10)
+        self.publisher_reference_sensor_pose_inertial = self.create_publisher(TwistStamped, '/controller/out/reference_inertial_sensor_pose', 10)
+        self.publisher_reference_sensor_pose_contact = self.create_publisher(TwistStamped, '/controller/out/reference_contact_sensor_pose', 10)
         self.publisher_servo_positions = self.create_publisher(JointState, '/controller/out/servo_positions', 10)
         self.publisher_drone_ref = self.create_publisher(TrajectorySetpoint, '/controller/out/trajectory_setpoint', 10)
         self.publisher_forward_kinematics = self.create_publisher(TwistStamped, '/controller/out/forward_kinematics', 10)
         self.publisher_error = self.create_publisher(TwistStamped, '/controller/out/error', 10)
         self.publisher_ik_check = self.create_publisher(TwistStamped, '/controller/out/ik_check', 10)
         self.publisher_correction = self.create_publisher(TwistStamped, '/controller/out/correction', 10)
+        self.publisher_drone_ref_twist = self.create_publisher(TwistStamped, '/controller/out/trajectory_setpoint_twist', 10)
 
         self.publisher_ki_error = self.create_publisher(Float64, '/controller/optimizer/ki_error', 10)
         self.publisher_regularization = self.create_publisher(Float64, '/controller/optimizer/regularization', 10)
@@ -95,7 +98,6 @@ class PoseBasedATS(Node):
         self.weighting_matrix[6,6] = 0.1 # Q1 - low penalty
         self.weighting_matrix[7,7] = 10 # Q2 - high penalty
         self.weighting_matrix[8,8] = 0.1 # Q3 - low penalty
-
 
         # Timer
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
@@ -154,11 +156,13 @@ class PoseBasedATS(Node):
         # Evaluate the error
         P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x/180.*np.pi, self.tactip.twist.angular.y/180.*np.pi, self.tactip.twist.linear.z/1000.)
         E_Sref = P_SC @ self.P_Cref
+        self.publish_transform(self.P_Cref, self.publisher_reference_sensor_pose_contact)
         self.publish_transform(E_Sref, self.publisher_error)
         e_sr = self.transformation_to_vector(E_Sref)
 
         # Control law TODO: add integral controller
-        u_ss = self.Kp*np.eye(6)@e_sr 
+        self.integrator += self.Ki*np.eye(6)@e_sr
+        u_ss = self.Kp*np.eye(6)@e_sr + np.clip(self.integrator,-self.windup*np.ones((6,1)), self.windup*np.ones((6,1)))
 
         U_SS = self.vector_to_transformation(u_ss)
 
@@ -171,7 +175,7 @@ class PoseBasedATS(Node):
         #P_Sref = self.forward_kinematics([0.0, 0.0, -1.5, 0.0, 0.0, 0.0, np.pi/3, 0.0, np.pi/6])
 
         # Publish the corrected reference sensor pose in inertial frame in vector form
-        self.publish_transform(P_Sref, self.publisher_reference_sensor_pose)
+        self.publish_transform(P_Sref, self.publisher_reference_sensor_pose_inertial)
 
         # Inverse kinematics
         result = self.inverse_kinematics(P_Sref)
@@ -188,6 +192,18 @@ class PoseBasedATS(Node):
             msg.position = [state_reference[6], state_reference[7], state_reference[8]]
             msg.header.stamp = self.get_clock().now().to_msg()
             self.publisher_servo_positions.publish(msg)
+
+            # Twist for plotjuggler
+            msg = TwistStamped()
+            msg.twist.linear.x = state_reference[0]
+            msg.twist.linear.y = state_reference[1]
+            msg.twist.linear.z = state_reference[2]
+            msg.twist.angular.x = state_reference[3]
+            msg.twist.angular.y = state_reference[4]
+            msg.twist.angular.z = state_reference[5]
+            msg.header.stamp = self.get_clock().now().to_msg()
+
+            self.publisher_drone_ref_twist.publish(msg)
 
             # FK for checking
             check = self.forward_kinematics(state_reference)
@@ -486,7 +502,7 @@ class PoseBasedATS(Node):
         ang_err = np.linalg.norm(delta_R.as_rotvec())
 
         error = pos_err**2 + ang_err**2
-        regularization = self.reg_weight * np.linalg.norm(state - current_state)**2
+        regularization = self.reg_weight * np.matmul((state-current_state), np.matmul(self.weighting_matrix, (state-current_state)))
         return error + regularization
     
     def ik_objective_simplified(self, simplified_state, P_des, current_state):
@@ -504,7 +520,7 @@ class PoseBasedATS(Node):
 
         error = pos_err**2 + ang_err**2 # Total inverse kinematic error
 
-        regularization = np.matmul((simplified_state-current_state), np.matmul(self.weighting_matrix_simplified, (simplified_state-current_state)))
+        regularization = self.reg_weight * np.matmul((simplified_state-current_state), np.matmul(self.weighting_matrix_simplified, (simplified_state-current_state)))
         return error + self.reg_weight*regularization
 
     def inverse_kinematics(self, P_des, bounds=None):
@@ -560,12 +576,13 @@ class PoseBasedATS(Node):
         publisher.publish(msg)
 
     def publish_ki_error(self, error):
-        msg = Float64()
-        msg.data = error[0]
-        self.publisher_ki_error.publish(msg)
+        ki_msg = Float64()
+        ki_msg.data = error[0]
+        self.publisher_ki_error.publish(ki_msg)
 
-        msg.data = error[1]
-        self.publisher_regularization.publish(msg)
+        reg_msg = Float64()
+        reg_msg.data = error[1]
+        self.publisher_regularization.publish(reg_msg)
 
 def main(args=None):
     rclpy.init(args=args)
