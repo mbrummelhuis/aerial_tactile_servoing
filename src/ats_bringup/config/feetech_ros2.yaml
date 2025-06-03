@@ -14,10 +14,7 @@
       operating_modes: [4, 4, 4] # Velocity mode 2, continuous position mode 4
       homing_modes: [0, 0, 0] #, 0, 0, 0, 0, 0, 0, 0]
       directions: [-1, -1, -1] #,
-      max_speeds: [0.5, 0.5, 0.5] # rad/s
+      max_speeds: [0.15, 0.15, 0.15] # rad/s
       max_currents: [100., 100., 100.] #, 100., 100., 100., 100., 100., 100., 100.]
       gear_ratios: [4.0, 1.0, 2.0]
       start_offsets: [1.75, 0.0, -1.85] # rad
-      proportional_gains: [0.3, 0.1, 0.2]
-      derivative_gains: [0.1, 0.03, 0.03]
-      integral_gains: [0.0, 0.0, 0.0]
