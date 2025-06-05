@@ -74,8 +74,8 @@ def generate_launch_description():
             {'frequency': LaunchConfiguration('major_frequency')},
             {'reference_pose': [0., 0., -0.003]},
             {'Kp': 1.5},
-            {'Ki': 0.0},
-            {'windup_clip': 5.},
+            {'Ki': 0.1},
+            {'windup_clip': 1.},
             {'regularization_weight': 0.001}
         ],
         arguments=['--ros-args', '--log-level', 'info']

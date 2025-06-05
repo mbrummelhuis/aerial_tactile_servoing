@@ -38,7 +38,8 @@ class PoseBasedATS(Node):
         )
 
         # Subscribers
-        self.subscription_tactip = self.create_subscription(TwistStamped, '/sensors/tactip', self.callback_tactip, 10)
+        self.subscription_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.callback_tactip, 10)
+        self.subscription_ssim = self.create_subscription(TwistStamped, '/tactip/ssim', self.callback_ssim, 10)
         self.subscription_servos = self.create_subscription(JointState, '/servo/out/state', self.callback_servo, 10)
         self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.callback_fmu, qos_profile)
 
@@ -66,6 +67,7 @@ class PoseBasedATS(Node):
             reference_pose[1],
             reference_pose[2])
 
+        self.ssim = 1.0
         self.tactip = TwistStamped()
         self.tactip.twist.linear.x = 0.0
         self.tactip.twist.linear.y = 0.0
@@ -76,16 +78,6 @@ class PoseBasedATS(Node):
         self.servo_state = JointState()
         self.servo_state.position = [0., 0., 0.]
         self.vehicle_odometry = VehicleOdometry()
-
-        # Custom weighting matrix for regularization of the simplified case (forcing pitch and roll 0)
-        self.weighting_matrix_simplified = np.eye(7)
-        self.weighting_matrix_simplified[0,0] = 1 # The vehicle states receive neutral penalty
-        self.weighting_matrix_simplified[1,1] = 1
-        self.weighting_matrix_simplified[2,2] = 1
-        self.weighting_matrix_simplified[3,3] = 1
-        self.weighting_matrix_simplified[4,4] = 0.1 # Lower penalty for moving q1
-        self.weighting_matrix_simplified[5,5] = 100. # Higher penalty for moving q2
-        self.weighting_matrix_simplified[6,6] = 0.1 # Lower penalty for moving q3
 
         # Custom weighting matrix for the regularization of the full kinematics case
         self.weighting_matrix =  np.eye(9)
@@ -103,55 +95,6 @@ class PoseBasedATS(Node):
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
         self.timer = self.create_timer(self.period, self.callback_timer)
 
-    # Callbacks
-    def callback_timer_simplified(self):
-        # Evaluate the error
-        P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x/180.*np.pi, self.tactip.twist.angular.y/180.*np.pi, self.tactip.twist.linear.z/1000.)
-        E_Sref = P_SC @ self.P_Cref
-        self.publish_transform(E_Sref, self.publisher_error)
-        e_sr = self.transformation_to_vector(E_Sref)
-
-        # Control law TODO: add integral controller
-        u_ss = self.Kp*np.eye(6)@e_sr 
-
-        U_SS = self.vector_to_transformation(u_ss)
-
-        P_S = self.forward_kinematics(self.get_state())
-
-        # Publish the forward kinematics for reference
-        self.publish_transform(P_S, self.publisher_forward_kinematics)
-        self.publish_transform(U_SS, self.publisher_correction)
-        P_Sref = P_S @ U_SS # Transform adjustment from sensor frame to inertial frame
-
-        # Publish the corrected reference sensor pose in inertial frame in vector form
-        self.publish_transform(P_Sref, self.publisher_reference_sensor_pose)
-
-        # Inverse kinematics
-        result = self.inverse_kinematics_simplified(P_Sref)
-        state_reference = result[0]
-        if result[1]==True:
-            self.get_logger().debug(f"IK optimization converged with value {result[3]}")
-            msg = TrajectorySetpoint()
-            msg.position = [state_reference[0], state_reference[1], state_reference[2]]
-            msg.yaw = state_reference[3]
-            self.publisher_drone_ref.publish(msg)
-
-            msg = JointState()
-            msg.name = ['q1', 'q2', 'q3']
-            msg.position = [state_reference[4], state_reference[5], state_reference[6]]
-            msg.header.stamp = self.get_clock().now().to_msg()
-            self.publisher_servo_positions.publish(msg)
-
-            # FK for checking
-            check = self.forward_kinematics_simplified(state_reference)
-            self.publish_transform(check, self.publisher_ik_check)
-
-            # Publish kinematic inversion error
-            self.publish_ki_error(self.kinematic_inversion_error(state_reference, P_Sref, self.get_state_simplified()))
-
-        elif result[1]!=True:
-            self.get_logger().error(f"IK optimization failed to converge with error {result[2]}")
-
     def callback_timer(self):
         # Evaluate the error
         P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x/180.*np.pi, self.tactip.twist.angular.y/180.*np.pi, self.tactip.twist.linear.z/1000.)
@@ -160,9 +103,9 @@ class PoseBasedATS(Node):
         self.publish_transform(E_Sref, self.publisher_error)
         e_sr = self.transformation_to_vector(E_Sref)
 
-        # Control law TODO: add integral controller
-        self.integrator += self.Ki*np.eye(6)@e_sr
-        u_ss = self.Kp*np.eye(6)@e_sr + np.clip(self.integrator,-self.windup*np.ones((6)), self.windup*np.ones((6)))
+        # Control law
+        self.integrator += self.Ki * e_sr
+        u_ss = self.Kp*e_sr + np.clip(self.integrator,-self.windup, self.windup)
 
         U_SS = self.vector_to_transformation(u_ss)
 
@@ -218,6 +161,9 @@ class PoseBasedATS(Node):
 
     def callback_tactip(self, msg):
         self.tactip = msg
+
+    def callback_ssim(self, msg):
+        self.ssim = msg.data
 
     def callback_servo(self, msg):
         self.servo_state = msg
