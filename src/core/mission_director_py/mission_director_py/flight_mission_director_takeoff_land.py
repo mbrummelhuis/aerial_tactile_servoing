@@ -87,7 +87,7 @@ class MissionDirectorPy(Node):
             10)
         self.subscriber_tactip = self.create_subscription(
             TwistStamped,
-            '/sensors/tactip',
+            '/tactip/pose',
             self.tactip_callback,
             10)
 

@@ -34,7 +34,7 @@ class ATSVelocityController(Node):
         self.ee_reference_velocity_subscriber_ = self.create_publisher(TwistStamped, '/references/ee_velocity', 10)
 
         # Subscribers
-        self.ee_measured_pose_subscriber_ = self.create_subscription(TwistStamped, '/sensors/tactip', self.ee_measured_pose_callback, 10)
+        self.ee_measured_pose_subscriber_ = self.create_subscription(TwistStamped, '/tactip/pose', self.ee_measured_pose_callback, 10)
         self.ee_reference_pose_subscriber_ = self.create_subscription(TwistStamped, '/references/ee_pose', self.ee_reference_pose_callback, 10)
 
         # data
