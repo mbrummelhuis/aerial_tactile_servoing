@@ -39,7 +39,7 @@ class PoseBasedATS(Node):
 
         # Subscribers
         self.subscription_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.callback_tactip, 10)
-        self.subscription_ssim = self.create_subscription(TwistStamped, '/tactip/ssim', self.callback_ssim, 10)
+        self.subscription_ssim = self.create_subscription(Float64, '/tactip/ssim', self.callback_ssim, 10)
         self.subscription_servos = self.create_subscription(JointState, '/servo/out/state', self.callback_servo, 10)
         self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.callback_fmu, qos_profile)
 
