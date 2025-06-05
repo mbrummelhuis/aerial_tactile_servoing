@@ -24,11 +24,13 @@ class PoseBasedATS(Node):
         self.declare_parameter('Ki', 0.1)
         self.declare_parameter('windup_clip', 10.)
         self.declare_parameter('regularization_weight', 0.001)
+        self.declare_parameter('ssim_contact_threshold', 0.7)
         self.Kp = self.get_parameter('Kp').get_parameter_value().double_value
         self.Ki = self.get_parameter('Ki').get_parameter_value().double_value
         self.integrator = np.zeros(6)
         self.windup = self.get_parameter('windup_clip').get_parameter_value().double_value
         self.reg_weight = self.get_parameter('regularization_weight').get_parameter_value().double_value
+        self.ssim_threshold = self.get_parameter('ssim_contact_threshold').get_parameter_value().double_value
 
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -103,10 +105,14 @@ class PoseBasedATS(Node):
         self.publish_transform(E_Sref, self.publisher_error)
         e_sr = self.transformation_to_vector(E_Sref)
 
-        # Control law
-        self.integrator += self.Ki * e_sr
+        # Check for contact through SSIM
+        if self.ssim < self.ssim_threshold: # If contact, accumulate integrator
+            self.integrator += self.Ki * e_sr
+        else: # If not contact, reset integrator
+            self.integrator = 0.
         u_ss = self.Kp*e_sr + np.clip(self.integrator,-self.windup, self.windup)
 
+        # Control law
         U_SS = self.vector_to_transformation(u_ss)
 
         P_S = self.forward_kinematics(self.get_state())

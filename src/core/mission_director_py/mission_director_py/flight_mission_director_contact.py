@@ -31,6 +31,7 @@ class MissionDirectorPy(Node):
         self.declare_parameter('takeoff_altitude', 2.0)
         self.declare_parameter('landing_velocity', -0.5)
         self.declare_parameter('search_velocity', -0.3)
+        self.declare_parameter('contact_depth_threshold', -1.0)
         self.declare_parameter('hover_time', 10.0)
         self.declare_parameter('position_clip', 0.0)
 
@@ -112,7 +113,8 @@ class MissionDirectorPy(Node):
         self.state_start_time = datetime.datetime.now()
         self.armed = False
         self.offboard = False
-        self.contact_depth_threshold = -1.0
+        self.killed = False
+        self.contact_depth_threshold = self.get_parameter('contact_depth_threshold').get_parameter_value().double_value # TODO: change to SSIM threshold
         self.hover_time = self.get_parameter('hover_time').get_parameter_value().double_value
         self.takeoff_altitude = self.get_parameter('takeoff_altitude').get_parameter_value().double_value
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
@@ -248,7 +250,7 @@ class MissionDirectorPy(Node):
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > self.hover_time or self.input_state==1:
                     self.transition_state('move_arm_for_ats')
-                elif not self.offboard or self.input_state == 2:
+                elif not self.offboard or self.killed or self.input_state == 2:
                     self.transition_state('emergency')
 
             case('move_arm_for_ats'):
@@ -262,7 +264,7 @@ class MissionDirectorPy(Node):
                 # Transition
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state==1:
                     self.transition_state('look_for_contact')
-                elif not self.offboard or self.input_state == 2:
+                elif not self.offboard or self.killed or self.input_state == 2:
                     self.transition_state('emergency')
 
             case('look_for_contact'):
@@ -276,7 +278,7 @@ class MissionDirectorPy(Node):
                 
                 if abs(self.tactip_data.twist.linear.z) > abs(self.contact_depth_threshold): # If tactip depth is deeper than 1.5 mm
                     self.transition_state('contact')
-                elif not self.offboard or self.input_state == 2:
+                elif not self.offboard or self.killed or self.input_state == 2:
                     self.transition_state('emergency')
 
             case('contact'):
@@ -301,7 +303,7 @@ class MissionDirectorPy(Node):
                 #    self.transition_state('look_for_contact')
                 elif (datetime.datetime.now() - self.state_start_time).seconds > 150. or self.input_state==1:
                     self.transition_state('land')
-                elif not self.offboard or self.input_state == 2:
+                elif not self.offboard or self.killed or self.input_state == 2:
                     self.transition_state('emergency')
 
             case('land'):
@@ -443,6 +445,11 @@ class MissionDirectorPy(Node):
             self.offboard = True
         else:
             self.offboard = False
+        
+        if msg.latest_disarming_reason == VehicleStatus.ARM_DISARM_REASON_KILL_SWITCH:
+            self.killed = True
+        else:
+            self.killed = False
 
         self.vehicle_status = msg
 

@@ -58,6 +58,7 @@ def generate_launch_description():
             {'takeoff_altitude': -1.5},
             {'landing_velocity': -0.5},
             {'search_velocity': 0.1},
+            {'contact_depth_threshold': -1.0},
             {'hover_time': 3.0},
             {'position_clip': 3.0}
         ],
@@ -72,11 +73,12 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
-            {'reference_pose': [0., 0., -0.003]},
-            {'Kp': 1.5},
-            {'Ki': 0.1},
+            {'reference_pose': [0., 0., -0.0018]},
+            {'Kp': 3.0},
+            {'Ki': 0.0},
             {'windup_clip': 1.},
-            {'regularization_weight': 0.001}
+            {'regularization_weight': 0.001},
+            {'ssim_contact_threshold': 0.7}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
