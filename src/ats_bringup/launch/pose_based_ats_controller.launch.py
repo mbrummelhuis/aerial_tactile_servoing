@@ -72,7 +72,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
-            {'reference_pose': [0., 0., -0.002]},
+            {'reference_pose': [0., 0., -0.003]},
             {'Kp': 1.5},
             {'Ki': 0.0},
             {'windup_clip': 5.},

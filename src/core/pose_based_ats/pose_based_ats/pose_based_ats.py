@@ -95,9 +95,9 @@ class PoseBasedATS(Node):
         self.weighting_matrix[3,3] = 10 # Roll - high penalty
         self.weighting_matrix[4,4] = 10 # Pitch - high penalty
         self.weighting_matrix[5,5] = 1
-        self.weighting_matrix[6,6] = 10 # Q1 - low penalty
+        self.weighting_matrix[6,6] = 0.1 # Q1 - low penalty
         self.weighting_matrix[7,7] = 10 # Q2 - high penalty
-        self.weighting_matrix[8,8] = 10 # Q3 - low penalty
+        self.weighting_matrix[8,8] = 0.1 # Q3 - low penalty
 
         # Timer
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
@@ -180,7 +180,7 @@ class PoseBasedATS(Node):
         # Inverse kinematics
         result = self.inverse_kinematics(P_Sref)
         state_reference = result[0]
-        self.get_logger().info(f"State reference: {state_reference}")
+        # self.get_logger().info(f"State reference: {state_reference}")
         if result[1]==True:
             self.get_logger().debug(f"IK optimization converged with value {result[3]}")
             msg = TrajectorySetpoint()

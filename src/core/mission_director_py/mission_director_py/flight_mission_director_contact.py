@@ -169,14 +169,14 @@ class MissionDirectorPy(Node):
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
-                    self.transition_state(new_state='wait_for_arm_offboard')
+                    self.transition_state(new_state='extend_arm')
                     
             case('extend_arm'):
                 self.move_arm_to_position(pi/2, 0.0, 0.0)
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
                 if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
-                    self.transition_state(new_state='ats_position_landed')
+                    self.transition_state(new_state='move_arm_landed2')
 
             case('ats_position_landed'):
                 self.move_arm_to_position(pi/3, 0.0, pi/6)
