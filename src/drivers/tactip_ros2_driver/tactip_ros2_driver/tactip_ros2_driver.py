@@ -4,9 +4,10 @@ from math import pi
 import time
 import os
 import numpy as np
-import cv2
+from skimage.metrics import structural_similarity as ssim
 
 from geometry_msgs.msg import TwistStamped
+from std_msgs.msg import Float64
 
 from .tactip import TacTip
 
@@ -44,7 +45,8 @@ class TactipDriver(Node):
                 return
 
         # publishers
-        self.publisher_ = self.create_publisher(TwistStamped, '/sensors/tactip', 10)
+        self.publisher_pose_ = self.create_publisher(TwistStamped, '/tactip/pose', 10)
+        self.publisher_ssim_ = self.create_publisher(Float64, '/tactip/ssim', 10)
 
         # Run testing model evaluation time functionality if enabled in Launch
         if self.get_parameter('test_model_time').get_parameter_value().bool_value:
@@ -53,6 +55,9 @@ class TactipDriver(Node):
 
         # Rotation between output in actual frame and the end-effector frame
         self.R_T = np.array([[1, 0, 0], [0, -1, 0],[0, 0, -1]])
+
+        # Reference image
+        self.ref_image_ssim = self.sensor.process().squeeze()
 
         # Set up timer
         self.cycle_counter = 0
@@ -73,6 +78,12 @@ class TactipDriver(Node):
         # Just read data without saving
         else:
             sensor_image = self.sensor.process()
+        
+        # Get SSIM
+        ssim_score = ssim(self.ref_image_ssim, sensor_image.squeeze())
+        msg = Float64()
+        msg.data = ssim_score
+        self.publisher_ssim_.publish(msg)
 
         #processed_image = process_image(sensor_image, **processed_image_params)
         data = self.sensor.predict(sensor_image)
@@ -96,7 +107,7 @@ class TactipDriver(Node):
         msg.twist.angular.x = rot_pred_pose[3]
         msg.twist.angular.y = rot_pred_pose[4]
         msg.twist.angular.z = rot_pred_pose[5]
-        self.publisher_.publish(msg)
+        self.publisher_pose_.publish(msg)
         #self.get_logger().info(f"Published data: {msg}")
 
         self.cycle_counter +=1
