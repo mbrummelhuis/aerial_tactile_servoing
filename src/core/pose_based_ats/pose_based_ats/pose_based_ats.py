@@ -8,8 +8,7 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation as R
 
-from std_msgs.msg import Float64
-from std_msgs.msg import Int8
+from std_msgs.msg import Int8, Int32, Float64
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import JointState
 from px4_msgs.msg import VehicleOdometry, TrajectorySetpoint
@@ -45,6 +44,7 @@ class PoseBasedATS(Node):
         self.subscription_ssim = self.create_subscription(Float64, '/tactip/ssim', self.callback_ssim, 10)
         self.subscription_servos = self.create_subscription(JointState, '/servo/out/state', self.callback_servo, 10)
         self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/in/vehicle_visual_odometry', self.callback_fmu, qos_profile)
+        self.subscription_md = self.create_subscription(Int32, '/md/state', self.md_callback, 10)
 
         # Publishers
         self.publisher_reference_sensor_pose_inertial = self.create_publisher(TwistStamped, '/controller/out/reference_inertial_sensor_pose', 10)
@@ -84,6 +84,7 @@ class PoseBasedATS(Node):
         self.servo_state.position = [0., 0., 0.]
         self.vehicle_odometry = VehicleOdometry()
         self.contact = False
+        self.md_state = 0
 
         # Custom weighting matrix for the regularization of the full kinematics case
         self.weighting_matrix =  np.eye(9)
@@ -110,14 +111,11 @@ class PoseBasedATS(Node):
         e_sr = self.transformation_to_vector(E_Sref)
 
         # Check for contact through SSIM
-        if self.ssim < self.ssim_threshold or self.contact: # If contact, accumulate integrator
+        if self.md_state == 8: # If contact, accumulate integrator
             self.integrator += self.Ki * e_sr
-            self.contact = True
         else: # If not contact, reset integrator
             self.integrator = 0.
-        contact_msg = Int8()
-        contact_msg.data = self.contact
-        self.publisher_contact.publish(contact_msg)
+
         u_ss = self.Kp*e_sr + np.clip(self.integrator,-self.windup, self.windup)
 
         # Control law
@@ -136,9 +134,9 @@ class PoseBasedATS(Node):
         # Inverse kinematics
         result = self.inverse_kinematics(P_Sref)
         state_reference = result[0]
-        # self.get_logger().info(f"State reference: {state_reference}")
+
         if result[1]==True:
-            self.get_logger().debug(f"IK optimization converged with value {result[3]}")
+            #self.get_logger().debug(f"IK optimization converged with value {result[3]}")
             msg = TrajectorySetpoint()
             msg.position = [state_reference[0], state_reference[1], state_reference[2]]
             msg.yaw = state_reference[5]
@@ -177,6 +175,13 @@ class PoseBasedATS(Node):
 
     def callback_ssim(self, msg):
         self.ssim = msg.data
+        if self.ssim < self.ssim_threshold:
+            self.contact = True
+        else:
+            self.contact = False
+        contact_msg = Int8()
+        contact_msg.data = self.contact
+        self.publisher_contact.publish(contact_msg)
 
     def callback_servo(self, msg):
         self.servo_state = msg
@@ -193,7 +198,10 @@ class PoseBasedATS(Node):
         twistmsg.twist.angular.x = state[3]
         twistmsg.twist.angular.y = state[4]
         twistmsg.twist.angular.z = state[5]
-        twistmsg.header.stamp = self.get_clock().now().to_msg()        
+        twistmsg.header.stamp = self.get_clock().now().to_msg()
+    
+    def md_callback(self, msg):
+        self.md_state = msg.data
 
     ''' Evaluate transformation matrix of contact frame in sensor frame
     '''

@@ -58,7 +58,7 @@ def generate_launch_description():
             {'takeoff_altitude': -1.5},
             {'landing_velocity': -0.5},
             {'search_velocity': 0.1},
-            {'contact_depth_threshold': -1.0},
+            {'ssim_contact_threshold': 0.7},
             {'hover_time': 3.0},
             {'position_clip': 3.0}
         ],
