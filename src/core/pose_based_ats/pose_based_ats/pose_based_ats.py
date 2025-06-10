@@ -199,6 +199,8 @@ class PoseBasedATS(Node):
         twistmsg.twist.angular.y = state[4]
         twistmsg.twist.angular.z = state[5]
         twistmsg.header.stamp = self.get_clock().now().to_msg()
+
+        self.publisher_drone_actual_position.publish(twistmsg)
     
     def md_callback(self, msg):
         self.md_state = msg.data

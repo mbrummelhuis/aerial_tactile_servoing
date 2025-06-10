@@ -204,6 +204,7 @@ class MissionDirectorPy(Node):
                     self.transition_state(new_state='wait_for_arm_offboard')
 
             case('wait_for_arm_offboard'):
+                self.move_arm_to_position(pi/2, 0.0, -1.85)
                 self.publishOffboardPositionMode()
                 self.publishMDState(3)
                 if self.armed and not self.offboard:
@@ -230,6 +231,7 @@ class MissionDirectorPy(Node):
 
             case('takeoff'): # Takeoff - wait for takeoff altitude
                 self.publishMDState(4)
+                self.move_arm_to_position(pi/2, 0.0, -1.85)
                 # get current vehicle altitude
                 current_altitude = self.vehicle_local_position.z
 
@@ -245,6 +247,7 @@ class MissionDirectorPy(Node):
                     self.transition_state('hover')
 
             case('hover'):
+                self.move_arm_to_position(pi/2, 0.0, -1.85)
                 self.publishMDState(5)
                 # create and publish setpoint message
                 self.publishOffboardPositionMode()
@@ -272,6 +275,7 @@ class MissionDirectorPy(Node):
             case('look_for_contact'):
                 self.publishMDState(7)
                 self.publishOffboardPositionMode()
+                self.move_arm_to_position(pi/3, 0.0, pi/6)
                 self.y_forward_setpoint = self.y_forward_setpoint + self.search_velocity*self.timer_period # fly forward
                 self.publishTrajectoryPositionSetpoint(self.x_setpoint, self.y_forward_setpoint, self.takeoff_altitude, 0.0)
                 
