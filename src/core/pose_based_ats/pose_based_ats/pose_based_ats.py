@@ -9,6 +9,7 @@ from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation as R
 
 from std_msgs.msg import Float64
+from std_msgs.msg import Int8
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import JointState
 from px4_msgs.msg import VehicleOdometry, TrajectorySetpoint
@@ -43,7 +44,7 @@ class PoseBasedATS(Node):
         self.subscription_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.callback_tactip, 10)
         self.subscription_ssim = self.create_subscription(Float64, '/tactip/ssim', self.callback_ssim, 10)
         self.subscription_servos = self.create_subscription(JointState, '/servo/out/state', self.callback_servo, 10)
-        self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.callback_fmu, qos_profile)
+        self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/in/vehicle_visual_odometry', self.callback_fmu, qos_profile)
 
         # Publishers
         self.publisher_reference_sensor_pose_inertial = self.create_publisher(TwistStamped, '/controller/out/reference_inertial_sensor_pose', 10)
@@ -55,6 +56,8 @@ class PoseBasedATS(Node):
         self.publisher_ik_check = self.create_publisher(TwistStamped, '/controller/out/ik_check', 10)
         self.publisher_correction = self.create_publisher(TwistStamped, '/controller/out/correction', 10)
         self.publisher_drone_ref_twist = self.create_publisher(TwistStamped, '/controller/out/trajectory_setpoint_twist', 10)
+        self.publisher_drone_actual_position = self.create_publisher(TwistStamped, '/controller/out/vehicle_visual_odometry', 10)
+        self.publisher_contact = self.create_publisher(Int8, '/controller/out/contact', 10)
 
         self.publisher_ki_error = self.create_publisher(Float64, '/controller/optimizer/ki_error', 10)
         self.publisher_regularization = self.create_publisher(Float64, '/controller/optimizer/regularization', 10)
@@ -80,12 +83,13 @@ class PoseBasedATS(Node):
         self.servo_state = JointState()
         self.servo_state.position = [0., 0., 0.]
         self.vehicle_odometry = VehicleOdometry()
+        self.contact = False
 
         # Custom weighting matrix for the regularization of the full kinematics case
         self.weighting_matrix =  np.eye(9)
-        self.weighting_matrix[0,0] = 0.1
-        self.weighting_matrix[1,1] = 0.1
-        self.weighting_matrix[2,2] = 0.1
+        self.weighting_matrix[0,0] = 1
+        self.weighting_matrix[1,1] = 1
+        self.weighting_matrix[2,2] = 1
         self.weighting_matrix[3,3] = 10 # Roll - high penalty
         self.weighting_matrix[4,4] = 10 # Pitch - high penalty
         self.weighting_matrix[5,5] = 1
@@ -106,15 +110,18 @@ class PoseBasedATS(Node):
         e_sr = self.transformation_to_vector(E_Sref)
 
         # Check for contact through SSIM
-        if self.ssim < self.ssim_threshold: # If contact, accumulate integrator
+        if self.ssim < self.ssim_threshold or self.contact: # If contact, accumulate integrator
             self.integrator += self.Ki * e_sr
+            self.contact = True
         else: # If not contact, reset integrator
             self.integrator = 0.
+        contact_msg = Int8()
+        contact_msg.data = self.contact
+        self.publisher_contact.publish(contact_msg)
         u_ss = self.Kp*e_sr + np.clip(self.integrator,-self.windup, self.windup)
 
         # Control law
         U_SS = self.vector_to_transformation(u_ss)
-
         P_S = self.forward_kinematics(self.get_state())
 
         # Publish the forward kinematics for reference
@@ -176,6 +183,17 @@ class PoseBasedATS(Node):
 
     def callback_fmu(self, msg):
         self.vehicle_odometry = msg
+
+        # Republish on TwistStamped topic for plotting
+        state = self.get_state()
+        twistmsg = TwistStamped()
+        twistmsg.twist.linear.x = state[0]
+        twistmsg.twist.linear.y = state[1]
+        twistmsg.twist.linear.z = state[2]
+        twistmsg.twist.angular.x = state[3]
+        twistmsg.twist.angular.y = state[4]
+        twistmsg.twist.angular.z = state[5]
+        twistmsg.header.stamp = self.get_clock().now().to_msg()        
 
     ''' Evaluate transformation matrix of contact frame in sensor frame
     '''
