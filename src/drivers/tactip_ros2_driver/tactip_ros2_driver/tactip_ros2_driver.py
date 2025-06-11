@@ -7,7 +7,7 @@ import numpy as np
 from skimage.metrics import structural_similarity as ssim
 
 from geometry_msgs.msg import TwistStamped
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, Int8
 
 from .tactip import TacTip
 
@@ -23,10 +23,12 @@ class TactipDriver(Node):
         self.declare_parameter('verbose', False)
         self.declare_parameter('test_model_time', False)
         self.declare_parameter('save_debug_image', False)
+        self.declare_parameter('ssim_contact_threshold', 0.7)
         self.declare_parameter('save_directory', 'Please set a save_directory in the launch file')
 
         # Instantiate Tactip sensor
         self.sensor = TacTip(self.get_parameter('source').get_parameter_value().integer_value)
+        self.ssim_threshold = self.get_parameter('ssim_contact_threshold').get_parameter_value().double_value
 
         # Node feedback
         self.get_logger().info("Tactip driver initialized")
@@ -47,6 +49,7 @@ class TactipDriver(Node):
         # publishers
         self.publisher_pose_ = self.create_publisher(TwistStamped, '/tactip/pose', 10)
         self.publisher_ssim_ = self.create_publisher(Float64, '/tactip/ssim', 10)
+        self.publisher_contact_ = self.create_publisher(Int8, '/tactip/contact', 10)
 
         # Run testing model evaluation time functionality if enabled in Launch
         if self.get_parameter('test_model_time').get_parameter_value().bool_value:
@@ -84,6 +87,15 @@ class TactipDriver(Node):
         msg = Float64()
         msg.data = ssim_score
         self.publisher_ssim_.publish(msg)
+
+        # Deduce contact
+        if ssim_score < self.ssim_threshold:
+            contact = True
+        else:
+            contact = False
+        msg = Int8()
+        msg.data = contact
+        self.publisher_contact_.publish(msg)
 
         #processed_image = process_image(sensor_image, **processed_image_params)
         data = self.sensor.predict(sensor_image)

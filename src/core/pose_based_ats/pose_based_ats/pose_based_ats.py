@@ -24,40 +24,33 @@ class PoseBasedATS(Node):
         self.declare_parameter('Ki', 0.1)
         self.declare_parameter('windup_clip', 10.)
         self.declare_parameter('regularization_weight', 0.001)
-        self.declare_parameter('ssim_contact_threshold', 0.7)
+        self.declare_parameter('test_execution_time', False)
         self.Kp = self.get_parameter('Kp').get_parameter_value().double_value
         self.Ki = self.get_parameter('Ki').get_parameter_value().double_value
         self.integrator = np.zeros(6)
         self.windup = self.get_parameter('windup_clip').get_parameter_value().double_value
         self.reg_weight = self.get_parameter('regularization_weight').get_parameter_value().double_value
-        self.ssim_threshold = self.get_parameter('ssim_contact_threshold').get_parameter_value().double_value
-
-        px4_qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1
-        )
 
         # Subscribers
         self.subscription_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.callback_tactip, 10)
-        self.subscription_ssim = self.create_subscription(Float64, '/tactip/ssim', self.callback_ssim, 10)
+        self.subscription_tactip_contact = self.create_subscription(Int8, '/tactip/contact', self.callback_tactip_contact, 10)
         self.subscription_servos = self.create_subscription(JointState, '/servo/out/state', self.callback_servo, 10)
-        self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/in/vehicle_visual_odometry', self.callback_fmu, 10) # TODO: Check QOS settings here. Seems like it doesn't work with the px4_qos
+        self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/in/vehicle_visual_odometry', self.callback_fmu, 10)
         self.subscription_md = self.create_subscription(Int32, '/md/state', self.md_callback, 10)
 
-        # Publishers
-        self.publisher_reference_sensor_pose_inertial = self.create_publisher(TwistStamped, '/controller/out/reference_inertial_sensor_pose', 10)
-        self.publisher_reference_sensor_pose_contact = self.create_publisher(TwistStamped, '/controller/out/reference_contact_sensor_pose', 10)
+        # Publishers (necessary)
         self.publisher_servo_positions = self.create_publisher(JointState, '/controller/out/servo_positions', 10)
         self.publisher_drone_ref = self.create_publisher(TrajectorySetpoint, '/controller/out/trajectory_setpoint', 10)
+
+        # Publishers (for logging and debugging)
+        self.publisher_reference_sensor_pose_inertial = self.create_publisher(TwistStamped, '/controller/out/reference_inertial_sensor_pose', 10)
+        self.publisher_reference_sensor_pose_contact = self.create_publisher(TwistStamped, '/controller/out/reference_contact_sensor_pose', 10)
         self.publisher_forward_kinematics = self.create_publisher(TwistStamped, '/controller/out/forward_kinematics', 10)
         self.publisher_error = self.create_publisher(TwistStamped, '/controller/out/error', 10)
         self.publisher_ik_check = self.create_publisher(TwistStamped, '/controller/out/ik_check', 10)
         self.publisher_correction = self.create_publisher(TwistStamped, '/controller/out/correction', 10)
         self.publisher_drone_ref_twist = self.create_publisher(TwistStamped, '/controller/out/trajectory_setpoint_twist', 10)
         self.publisher_drone_actual_position = self.create_publisher(TwistStamped, '/controller/out/vehicle_visual_odometry', 10)
-        self.publisher_contact = self.create_publisher(Int8, '/controller/out/contact', 10)
 
         self.publisher_ki_error = self.create_publisher(Float64, '/controller/optimizer/ki_error', 10)
         self.publisher_regularization = self.create_publisher(Float64, '/controller/optimizer/regularization', 10)
@@ -72,7 +65,6 @@ class PoseBasedATS(Node):
             reference_pose[1],
             reference_pose[2])
 
-        self.ssim = 1.0
         self.tactip = TwistStamped()
         self.tactip.twist.linear.x = 0.0
         self.tactip.twist.linear.y = 0.0
@@ -103,7 +95,22 @@ class PoseBasedATS(Node):
         self.timer = self.create_timer(self.period, self.callback_timer)
 
     def callback_timer(self):
-        # Evaluate the error
+        # Get state
+        state = self.get_state()
+        # Publish data on self
+        # Own position in TwistStamped message
+        twistmsg = TwistStamped()
+        twistmsg.twist.linear.x = state[0]
+        twistmsg.twist.linear.y = state[1]
+        twistmsg.twist.linear.z = state[2]
+        twistmsg.twist.angular.x = state[3]
+        twistmsg.twist.angular.y = state[4]
+        twistmsg.twist.angular.z = state[5]
+        twistmsg.header.stamp = self.get_clock().now().to_msg()
+
+        self.publisher_drone_actual_position.publish(twistmsg)
+
+        # Evaluate the error - TacTip output is in deg and mm
         P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x/180.*np.pi, self.tactip.twist.angular.y/180.*np.pi, self.tactip.twist.linear.z/1000.)
         E_Sref = P_SC @ self.P_Cref
         self.publish_transform(self.P_Cref, self.publisher_reference_sensor_pose_contact)
@@ -111,7 +118,7 @@ class PoseBasedATS(Node):
         e_sr = self.transformation_to_vector(E_Sref)
 
         # Check for contact through SSIM
-        if self.md_state == 8: # If contact, accumulate integrator
+        if self.contact == 8: # If contact, accumulate integrator TODO: revise with tactip contact?
             self.integrator += self.Ki * e_sr
         else: # If not contact, reset integrator
             self.integrator = 0.
@@ -120,7 +127,7 @@ class PoseBasedATS(Node):
 
         # Control law
         U_SS = self.vector_to_transformation(u_ss)
-        P_S = self.forward_kinematics(self.get_state())
+        P_S = self.forward_kinematics(state)
 
         # Publish the forward kinematics for reference
         self.publish_transform(P_S, self.publisher_forward_kinematics)
@@ -173,34 +180,14 @@ class PoseBasedATS(Node):
     def callback_tactip(self, msg):
         self.tactip = msg
 
-    def callback_ssim(self, msg):
-        self.ssim = msg.data
-        if self.ssim < self.ssim_threshold:
-            self.contact = True
-        else:
-            self.contact = False
-        contact_msg = Int8()
-        contact_msg.data = self.contact
-        self.publisher_contact.publish(contact_msg)
+    def callback_tactip_contact(self, msg):
+        self.contact = msg.data
 
     def callback_servo(self, msg):
         self.servo_state = msg
 
     def callback_fmu(self, msg):
         self.vehicle_odometry = msg
-
-        # Republish on TwistStamped topic for plotting
-        state = self.get_state()
-        twistmsg = TwistStamped()
-        twistmsg.twist.linear.x = state[0]
-        twistmsg.twist.linear.y = state[1]
-        twistmsg.twist.linear.z = state[2]
-        twistmsg.twist.angular.x = state[3]
-        twistmsg.twist.angular.y = state[4]
-        twistmsg.twist.angular.z = state[5]
-        twistmsg.header.stamp = self.get_clock().now().to_msg()
-
-        self.publisher_drone_actual_position.publish(twistmsg)
     
     def md_callback(self, msg):
         self.md_state = msg.data
@@ -313,39 +300,6 @@ class PoseBasedATS(Node):
         P_S[3,3] = 1
 
         return P_S
-    
-    def forward_kinematics_simplified(self, simplified_state):
-        """ Returns a transformation matrix of the end-effector (sensor) pose in inertial frame with the uncontrollable states (pitch and roll) zero.
-        """
-        x_B = simplified_state[0]
-        y_B = simplified_state[1]
-        z_B = simplified_state[2]
-        roll = 0.0
-        pitch = 0.0
-        yaw = simplified_state[3]
-        q_1 = simplified_state[4]
-        q_2 = simplified_state[5]
-        q_3 = simplified_state[6]
-
-        P_S = np.zeros((4,4))
-        P_S[0,0] = -(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_2) + np.cos(yaw)*np.cos(q_2)*np.cos(pitch)
-        P_S[0,1] = -(-(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_2) - np.sin(q_2)*np.cos(yaw)*np.cos(pitch))*np.sin(q_3) + (-np.sin(yaw)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_3)
-        P_S[0,2] = -(-(np.sin(yaw)*np.sin(q_1 + roll) + np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_2) - np.sin(q_2)*np.cos(yaw)*np.cos(pitch))*np.cos(q_3) - (-np.sin(yaw)*np.cos(q_1 + roll) + np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw))*np.sin(q_3)
-        P_S[0,3] = -0.11*np.sin(yaw)*np.sin(q_1 + roll) - 0.11*np.sin(pitch)*np.cos(yaw)*np.cos(q_1 + roll) - 0.311*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2) - 0.311*np.sin(q_2)*np.cos(yaw)*np.cos(pitch) - 0.311*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_3)*np.cos(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(q_1 + roll)*np.cos(q_2)*np.cos(q_3) - 0.273*np.sin(q_2)*np.cos(yaw)*np.cos(q_3)*np.cos(pitch) + 0.273*np.sin(q_3)*np.sin(pitch)*np.sin(q_1 + roll)*np.cos(yaw) - 0.273*np.sin(pitch)*np.cos(yaw)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) + x_B
-        P_S[1,0] = (-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.sin(q_2) + np.sin(yaw)*np.cos(q_2)*np.cos(pitch)
-        P_S[1,1] = -((-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_2) - np.sin(yaw)*np.sin(q_2)*np.cos(pitch))*np.sin(q_3) + (np.sin(yaw)*np.sin(pitch)*np.sin(q_1 + roll) + np.cos(yaw)*np.cos(q_1 + roll))*np.cos(q_3)
-        P_S[1,2] = -((-np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + np.sin(q_1 + roll)*np.cos(yaw))*np.cos(q_2) - np.sin(yaw)*np.sin(q_2)*np.cos(pitch))*np.cos(q_3) - (np.sin(yaw)*np.sin(pitch)*np.sin(q_1 + roll) + np.cos(yaw)*np.cos(q_1 + roll))*np.sin(q_3)
-        P_S[1,3] = -0.11*np.sin(yaw)*np.sin(pitch)*np.cos(q_1 + roll) + 0.11*np.sin(q_1 + roll)*np.cos(yaw) - 0.311*np.sin(yaw)*np.sin(q_2)*np.cos(pitch) - 0.311*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(q_1 + roll) + 0.311*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2) - 0.273*np.sin(yaw)*np.sin(q_2)*np.cos(q_3)*np.cos(pitch) + 0.273*np.sin(yaw)*np.sin(q_3)*np.sin(pitch)*np.sin(q_1 + roll) - 0.273*np.sin(yaw)*np.sin(pitch)*np.cos(q_2)*np.cos(q_3)*np.cos(q_1 + roll) + 0.273*np.sin(q_3)*np.cos(yaw)*np.cos(q_1 + roll) + 0.273*np.sin(q_1 + roll)*np.cos(yaw)*np.cos(q_2)*np.cos(q_3) + y_B
-        P_S[2,0] = -np.sin(q_2)*np.cos(pitch)*np.cos(q_1 + roll) - np.sin(pitch)*np.cos(q_2)
-        P_S[2,1] = -(np.sin(q_2)*np.sin(pitch) - np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll))*np.sin(q_3) + np.sin(q_1 + roll)*np.cos(q_3)*np.cos(pitch)
-        P_S[2,2] = -(np.sin(q_2)*np.sin(pitch) - np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll))*np.cos(q_3) - np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch)
-        P_S[2,3] = -0.11*np.cos(pitch)*np.cos(q_1 + roll) + 0.311*np.sin(q_2)*np.sin(pitch) - 0.311*np.cos(q_2)*np.cos(pitch)*np.cos(q_1 + roll) + 0.273*np.sin(q_2)*np.sin(pitch)*np.cos(q_3) + 0.273*np.sin(q_3)*np.sin(q_1 + roll)*np.cos(pitch) - 0.273*np.cos(q_2)*np.cos(q_3)*np.cos(pitch)*np.cos(q_1 + roll) + z_B
-        P_S[3,0] = 0
-        P_S[3,1] = 0
-        P_S[3,2] = 0
-        P_S[3,3] = 1
-
-        return P_S        
 
     ''' Returns the full 9DOF states
     '''    
@@ -439,7 +393,7 @@ class PoseBasedATS(Node):
         return HTM
 
     def kinematic_inversion_error(self, state, P_des, current_state):
-        P_S = self.forward_kinematics_simplified(state)
+        P_S = self.forward_kinematics(state)
         # Position error (Euclidean distance)
         pos_err = np.linalg.norm(P_S[:3, 3] - P_des[:3, 3])
 
@@ -469,24 +423,6 @@ class PoseBasedATS(Node):
         error = pos_err**2 + ang_err**2
         regularization = self.reg_weight * np.matmul((state-current_state), np.matmul(self.weighting_matrix, (state-current_state)))
         return error + regularization
-    
-    def ik_objective_simplified(self, simplified_state, P_des, current_state):
-        P_S = self.forward_kinematics_simplified(simplified_state)
-
-        # Position error (Euclidean distance)
-        pos_err = np.linalg.norm(P_S[:3, 3] - P_des[:3, 3])
-
-        # Orientation error (rotation angle difference)
-        R1 = P_S[:3, :3]
-        R2 = P_des[:3, :3]
-        delta_R = R.from_matrix(R1.T @ R2)
-        ang_err = np.linalg.norm(delta_R.as_rotvec())
-        #ang_err = np.linalg.norm(P_S[:3, :3] - P_des[:3, :3])
-
-        error = pos_err**2 + ang_err**2 # Total inverse kinematic error
-
-        regularization = self.reg_weight * np.matmul((simplified_state-current_state), np.matmul(self.weighting_matrix_simplified, (simplified_state-current_state)))
-        return error + self.reg_weight*regularization
 
     def inverse_kinematics(self, P_des, bounds=None):
         # Bounds
@@ -505,27 +441,7 @@ class PoseBasedATS(Node):
             method='SLSQP',
             options={'ftol': 1e-6, 'disp': False}
         )
-        return result.x, result.success, result.message, result.fun
-    
-    def inverse_kinematics_simplified(self, P_des, bounds=None):
-        # Bounds
-        # [x, y, z, yaw, q1, q2, q3]
-        lower_state_bounds = [None, None, None, -np.pi, -np.pi, -np.pi/10, -np.pi/2]
-        upper_state_bounds = [None, None, None, np.pi, np.pi, np.pi/10, np.pi/2]
-        bounds = list(zip(lower_state_bounds, upper_state_bounds))
-
-        # State
-        current_state = self.get_state_simplified()
-
-        result = minimize(
-            fun=self.ik_objective_simplified,
-            x0=current_state,
-            args=(P_des, current_state),
-            bounds=bounds,
-            method='SLSQP',
-            options={'ftol': 1e-6, 'disp': False}
-        )
-        return result.x, result.success, result.message, result.fun        
+        return result.x, result.success, result.message, result.fun   
     
     def publish_transform(self, T, publisher):
         vec = self.transformation_to_vector(T)

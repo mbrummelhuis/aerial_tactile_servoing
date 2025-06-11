@@ -4,7 +4,7 @@ import datetime
 
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-from std_msgs.msg import Int32
+from std_msgs.msg import Int32, Int8
 from std_msgs.msg import Float64
 
 from numpy import pi, clip
@@ -31,7 +31,6 @@ class MissionDirectorPy(Node):
         self.declare_parameter('takeoff_altitude', 2.0)
         self.declare_parameter('landing_velocity', -0.5)
         self.declare_parameter('search_velocity', -0.3)
-        self.declare_parameter('ssim_contact_threshold', 0.7)
         self.declare_parameter('hover_time', 10.0)
         self.declare_parameter('position_clip', 0.0)
 
@@ -57,10 +56,6 @@ class MissionDirectorPy(Node):
         # Controller subscriber
         self.subscriber_controller = self.create_subscription(TrajectorySetpoint, '/controller/out/trajectory_setpoint', self.controller_callback, 10)
         self.subscriber_controller_servo = self.create_subscription(JointState, '/controller/out/servo_positions', self.controller_servo_callback, 10)
-        self.subscriber_controller_reference_sensor_pose = self.create_subscription(TwistStamped, '/controller/out/reference_inertial_sensor_pose', self.controller_pose_callback,10)
-        self.subscriber_controller_error = self.create_subscription(TwistStamped, '/controller/out/error', self.controller_error_callback, 10)
-        self.subscriber_controller_FK = self.create_subscription(TwistStamped, '/controller/out/forward_kinematics', self.controller_FK_callback, 10)
-        self.subscriber_controller_ik_check = self.create_subscription(TwistStamped, '/controller/out/ik_check', self.controller_ik_check_callback, 10)
         
         # GZ subscribers
         self.subscriber_joint_states = self.create_subscription(JointState, '/servo/out/state', self.joint_states_callback, 10)
@@ -68,7 +63,7 @@ class MissionDirectorPy(Node):
         # Subscribe to manual input
         self.subscriber_input_state = self.create_subscription(Int32, '/md/input', self.input_state_callback, 10)
         self.subscriber_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.tactip_callback, 10)
-        self.subscriber_sensor_ssim = self.create_subscription(Float64, '/tactip/ssim', self.tactip_ssim_callback, 10)
+        self.subscriber_tactip_contact = self.create_subscription(Int8, '/tactip/contact', self.tactip_contact_callback, 10)
         
         # Initialize tactip data to zero
         self.tactip_data = TwistStamped()
@@ -90,8 +85,7 @@ class MissionDirectorPy(Node):
         self.armed = False
         self.offboard = False
         self.killed = False
-        self.ssim = 1.0
-        self.ssim_contact_threshold = self.get_parameter('ssim_contact_threshold').get_parameter_value().double_value
+        self.contact = False
         self.hover_time = self.get_parameter('hover_time').get_parameter_value().double_value
         self.takeoff_altitude = self.get_parameter('takeoff_altitude').get_parameter_value().double_value
         self.landing_velocity = self.get_parameter('landing_velocity').get_parameter_value().double_value
@@ -257,7 +251,7 @@ class MissionDirectorPy(Node):
                 if self.counter % self.frequency:
                     self.get_logger().info(f'Tactip depth: {self.tactip_data.twist.linear.z} mm')
                 
-                if self.ssim < self.ssim_contact_threshold: # SSIM threshold to determine contact
+                if self.contact: 
                     self.transition_state('contact')
                 elif not self.offboard or self.killed or self.input_state == 2:
                     self.transition_state('emergency')
@@ -341,8 +335,8 @@ class MissionDirectorPy(Node):
     def controller_servo_callback(self, msg):
         self.servo_reference = msg
     
-    def tactip_ssim_callback(self, msg):
-        self.ssim = msg.data
+    def tactip_contact_callback(self, msg):
+        self.contact = msg.data
 
     def move_arm_to_position(self, q1, q2, q3):
         self.publish_arm_position_commands(q1, q2, q3)
@@ -452,15 +446,6 @@ class MissionDirectorPy(Node):
         self.arm_velocities[0] = msg.velocity[0] # Pivot
         self.arm_velocities[1] = msg.velocity[1] # Shoulder
         self.arm_velocities[2] = msg.velocity[2] # Elbow
-
-    def controller_pose_callback(self,msg):
-        pass
-    def controller_error_callback(self,msg):
-        pass
-    def controller_FK_callback(self,msg):
-        pass
-    def controller_ik_check_callback(self, msg):
-        pass
 
     def transition_state(self, new_state='end'):
         if self.input_state != 0:

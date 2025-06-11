@@ -58,7 +58,6 @@ def generate_launch_description():
             {'takeoff_altitude': -1.5},
             {'landing_velocity': -0.5},
             {'search_velocity': 0.05},
-            {'ssim_contact_threshold': 0.7},
             {'hover_time': 3.0},
             {'position_clip': 3.0}
         ],
@@ -69,7 +68,7 @@ def generate_launch_description():
     controller = Node(
         package='pose_based_ats',
         executable='pose_based_ats',
-        name='ats_controller',
+        name='pose_based_ats',
         output='screen',
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
@@ -78,7 +77,7 @@ def generate_launch_description():
             {'Ki': 0.1},
             {'windup_clip': 1.},
             {'regularization_weight': 0.001},
-            {'ssim_contact_threshold': 0.7}
+            {'test_execution_speed': False}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
@@ -107,6 +106,7 @@ def generate_launch_description():
             {'verbose': False},
             {'test_model_time': False},
             {'save_debug_image': False},
+            {'ssim_contact_threshold': 0.7},
             {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')}
         ],
         arguments=['--ros-args', '--log-level', 'info']
