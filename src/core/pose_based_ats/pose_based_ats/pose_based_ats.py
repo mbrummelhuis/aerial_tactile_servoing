@@ -188,7 +188,6 @@ class PoseBasedATS(Node):
 
     def callback_fmu(self, msg):
         self.vehicle_odometry = msg
-        self.get_logger().loginfo("Received FMU message, callback")
 
         # Republish on TwistStamped topic for plotting
         state = self.get_state()
@@ -364,28 +363,12 @@ class PoseBasedATS(Node):
             self.servo_state.position[2]
         ])
         return current_state
-
-    ''' Returns the 7DOF controllable substate
-    '''
-    def get_state_simplified(self):
-        ''' Returns the 7DOF controllable substate
-        '''
-        euler = self.quaternion_to_euler(self.vehicle_odometry.q)
-        current_state = np.array([
-            self.vehicle_odometry.position[0],
-            self.vehicle_odometry.position[1],
-            self.vehicle_odometry.position[2],
-            euler[2],
-            self.servo_state.position[0],
-            self.servo_state.position[1],
-            self.servo_state.position[2]
-        ])
-        return current_state
     
     # Auxiliary functions
     ''' Get rotation matrix corresponding to wxyz quaternion
     '''
     def quaternion_to_rotmat(self, quat):
+        # Below is from Automatic Addision - it seems not to correspond to most other sources
         # First row of the rotation matrix
         r00 = 2 * (quat[0] * quat[0] + quat[1] * quat[1]) - 1
         r01 = 2 * (quat[1] * quat[2] - quat[0] * quat[3])
@@ -403,9 +386,9 @@ class PoseBasedATS(Node):
         
         # 3x3 rotation matrix
         rotmat = np.array([[r00, r01, r02],
-                            [r10, r11, r12],
-                            [r20, r21, r22]])
-                                
+                           [r10, r11, r12],
+                           [r20, r21, r22]])
+                
         return rotmat
 
     def rotmat_to_quaternion(self, rotmat):
@@ -416,9 +399,9 @@ class PoseBasedATS(Node):
         if rotmat[2,0]!=1 and rotmat[2,0]!=-1:
             euler[1] = -np.arcsin(rotmat[2,0])
 
-        euler[0] = np.arctan2(rotmat[1,0], rotmat[0,0])
+        euler[0] = np.arctan2(rotmat[2,1], rotmat[2,2])
         euler[1] = -np.arcsin(rotmat[2,0])
-        euler[2] = np.arctan2(rotmat[2,1], rotmat[2,2])
+        euler[2] = np.arctan2(rotmat[1,0], rotmat[0,0])
 
         return euler
 
@@ -436,9 +419,9 @@ class PoseBasedATS(Node):
         vector[0] = HTM[0,3]
         vector[1] = HTM[1,3]
         vector[2] = HTM[2,3]
-        vector[3] = np.arctan2(HTM[1,0], HTM[0,0])
-        vector[4] = -np.arcsin(HTM[2,0])
-        vector[5] = np.arctan2(HTM[2,1], HTM[2,2])
+        vector[3] = np.arctan2(HTM[2,1], HTM[2,2])  # Rx, roll
+        vector[4] = -np.arcsin(HTM[2,0])            # Ry, pitch
+        vector[5] = np.arctan2(HTM[1,0], HTM[0,0])  # Rz, yaw
 
         return vector
 
