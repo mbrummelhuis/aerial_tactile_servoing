@@ -118,7 +118,7 @@ class PoseBasedATS(Node):
         e_sr = self.transformation_to_vector(E_Sref)
 
         # Check for contact through SSIM
-        if self.contact == 8: # If contact, accumulate integrator TODO: revise with tactip contact?
+        if self.md_state == 8: # If contact, accumulate integrator TODO: revise with tactip contact?
             self.integrator += self.Ki * e_sr
         else: # If not contact, reset integrator
             self.integrator = 0.
