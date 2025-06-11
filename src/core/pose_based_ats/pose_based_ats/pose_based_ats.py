@@ -188,6 +188,7 @@ class PoseBasedATS(Node):
 
     def callback_fmu(self, msg):
         self.vehicle_odometry = msg
+        self.get_logger().loginfo("Received FMU message, callback")
 
         # Republish on TwistStamped topic for plotting
         state = self.get_state()

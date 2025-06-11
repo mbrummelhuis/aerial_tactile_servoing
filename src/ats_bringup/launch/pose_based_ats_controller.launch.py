@@ -42,7 +42,7 @@ def generate_launch_description():
     if logging:
         rosbag_name = datetime.datetime.now().strftime('%Y%m%d_%H-%M-%S')+'tactip_ros2bag'
         ros2bag = ExecuteProcess(
-            cmd=['ros2', 'bag', 'record', '-s', 'mcap','-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
+            cmd=['ros2', 'bag', 'record', '-o', '/ros2_ws/aerial_tactile_servoing/rosbags/'+rosbag_name, '-a'], 
             output='screen', 
             log_cmd=True,
         )
