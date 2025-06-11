@@ -50,23 +50,9 @@ class MissionDirectorPy(Node):
         self.publisher_md_state = self.create_publisher(Int32, '/md/state', 10)
 
         # PX4 subscribers
-        self.subscriber_vehicle_status = self.create_subscription(
-            VehicleStatus,
-            '/fmu/out/vehicle_status_v1',
-            self.vehicle_status_callback,
-            qos_profile
-        )
-        self.subscriber_vehicle_odometry = self.create_subscription(
-            VehicleOdometry, 
-            '/fmu/out/vehicle_odometry', 
-            self.vehicle_odometry_callback, 
-            qos_profile)
-        self.subscriber_vehicle_local_position = self.create_subscription(
-            VehicleLocalPosition,
-            '/fmu/out/vehicle_local_position',
-            self.vehicle_local_position_callback,
-            qos_profile
-        )
+        self.subscriber_vehicle_status = self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status_v1', self.vehicle_status_callback, qos_profile)
+        self.subscriber_vehicle_odometry = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.vehicle_odometry_callback, qos_profile)
+        self.subscriber_vehicle_local_position = self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
 
         # Controller subscriber
         self.subscriber_controller = self.create_subscription(TrajectorySetpoint, '/controller/out/trajectory_setpoint', self.controller_callback, 10)
@@ -75,26 +61,15 @@ class MissionDirectorPy(Node):
         self.subscriber_controller_error = self.create_subscription(TwistStamped, '/controller/out/error', self.controller_error_callback, 10)
         self.subscriber_controller_FK = self.create_subscription(TwistStamped, '/controller/out/forward_kinematics', self.controller_FK_callback, 10)
         self.subscriber_controller_ik_check = self.create_subscription(TwistStamped, '/controller/out/ik_check', self.controller_ik_check_callback, 10)
-        self.subscriber_sensor_ssim = self.create_subscription(Float64, '/tactip/ssim', self.tactip_ssim_callback, 10)
+        
         # GZ subscribers
-        self.subscriber_joint_states = self.create_subscription(
-            JointState,
-            '/servo/out/state',
-            self.joint_states_callback,
-            10)
-
+        self.subscriber_joint_states = self.create_subscription(JointState, '/servo/out/state', self.joint_states_callback, 10)
+        
         # Subscribe to manual input
-        self.subscriber_input_state = self.create_subscription(
-            Int32, 
-            '/md/input', 
-            self.input_state_callback, 
-            10)
-        self.subscriber_tactip = self.create_subscription(
-            TwistStamped,
-            '/tactip/pose',
-            self.tactip_callback,
-            10)
-
+        self.subscriber_input_state = self.create_subscription(Int32, '/md/input', self.input_state_callback, 10)
+        self.subscriber_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.tactip_callback, 10)
+        self.subscriber_sensor_ssim = self.create_subscription(Float64, '/tactip/ssim', self.tactip_ssim_callback, 10)
+        
         # Initialize tactip data to zero
         self.tactip_data = TwistStamped()
         self.tactip_data.twist.linear.x = 0.0

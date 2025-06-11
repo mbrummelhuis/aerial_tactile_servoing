@@ -32,7 +32,7 @@ class PoseBasedATS(Node):
         self.reg_weight = self.get_parameter('regularization_weight').get_parameter_value().double_value
         self.ssim_threshold = self.get_parameter('ssim_contact_threshold').get_parameter_value().double_value
 
-        qos_profile = QoSProfile(
+        px4_qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
@@ -43,7 +43,7 @@ class PoseBasedATS(Node):
         self.subscription_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.callback_tactip, 10)
         self.subscription_ssim = self.create_subscription(Float64, '/tactip/ssim', self.callback_ssim, 10)
         self.subscription_servos = self.create_subscription(JointState, '/servo/out/state', self.callback_servo, 10)
-        self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/in/vehicle_visual_odometry', self.callback_fmu, qos_profile)
+        self.subscription_fmu = self.create_subscription(VehicleOdometry, '/fmu/in/vehicle_visual_odometry', self.callback_fmu, 10) # TODO: Check QOS settings here. Seems like it doesn't work with the px4_qos
         self.subscription_md = self.create_subscription(Int32, '/md/state', self.md_callback, 10)
 
         # Publishers
