@@ -130,7 +130,7 @@ class MissionDirectorPy(Node):
             case('wp1'):
                 self.publishMDState(11)
                 self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(1.0, 1.0, 1.0, pi/4)
+                self.publishTrajectoryPositionSetpoint(1.0, 1.0, -1.0, pi/4)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > 10. or self.input_state==1:
                     self.transition_state('wp2')
@@ -140,7 +140,7 @@ class MissionDirectorPy(Node):
             case('wp2'):
                 self.publishMDState(12)
                 self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(-1.0, 1.0, 2.0, pi/4)
+                self.publishTrajectoryPositionSetpoint(-1.0, 1.0, -2.0, pi/4)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > 10. or self.input_state==1:
                     self.transition_state('wp3')
@@ -150,7 +150,7 @@ class MissionDirectorPy(Node):
             case('wp3'):
                 self.publishMDState(13)
                 self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(-1.0, -1.0, 2.0, -pi/4)
+                self.publishTrajectoryPositionSetpoint(-1.0, -1.0, -2.0, -pi/4)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > 10. or self.input_state==1:
                     self.transition_state('wp4')
@@ -160,10 +160,10 @@ class MissionDirectorPy(Node):
             case('wp4'):
                 self.publishMDState(14)
                 self.publishOffboardPositionMode()
-                self.publishTrajectoryPositionSetpoint(1.0, -1.0, 1.0, -pi/4)
+                self.publishTrajectoryPositionSetpoint(1.0, -1.0, -1.0, -pi/4)
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > 10. or self.input_state==1:
-                    self.transition_state('periodic')
+                    self.transition_state('land')
                 elif not self.offboard or self.input_state == 2:
                     self.transition_state('emergency')
             
@@ -176,7 +176,7 @@ class MissionDirectorPy(Node):
                     -1.5 - 0.5*cos(2*pi*float(self.counter)/self.frequency/self.period_time),
                     abs(2*pi*float(self.counter)/self.frequency/(2*self.period_time)))
                 
-                counter+=1
+                self.counter+=1
 
                 if (datetime.datetime.now() - self.state_start_time).seconds > 50. or self.input_state==1:
                     self.transition_state('land')
