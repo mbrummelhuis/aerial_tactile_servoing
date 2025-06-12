@@ -27,6 +27,7 @@ setup(
             'sim_mission_director = mission_director_py.sim_mission_director_py:main',
             'flight_mission_director_contact = mission_director_py.flight_mission_director_contact:main',
             'flight_mission_director_takeoff_land = mission_director_py.flight_mission_director_takeoff_land:main',
+            'flight_mission_director_waypoints = mission_director_py.flight_mission_director_waypoints:main',
         ],
     },
 )
