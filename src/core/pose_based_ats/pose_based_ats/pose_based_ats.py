@@ -1,8 +1,6 @@
 import rclpy
 from rclpy.node import Node
 
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-
 import numpy as np
 
 from scipy.optimize import minimize
@@ -118,7 +116,7 @@ class PoseBasedATS(Node):
         e_sr = self.transformation_to_vector(E_Sref)
 
         # Check for contact through SSIM
-        if self.md_state == 8: # If contact, accumulate integrator TODO: revise with tactip contact?
+        if self.md_state == 8: # If contact, accumulate integrator
             self.integrator += self.Ki * e_sr
         else: # If not contact, reset integrator
             self.integrator = 0.
