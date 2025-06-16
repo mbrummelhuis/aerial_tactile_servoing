@@ -18,14 +18,14 @@ class PoseBasedATS(Node):
         # Parameters
         self.declare_parameter('frequency', 10.)
         self.declare_parameter('reference_pose', [0., 0., 0.])
-        self.declare_parameter('Kp', 3.0)
-        self.declare_parameter('Ki', 0.1)
+        self.declare_parameter('Kp_linear', 3.0)
+        self.declare_parameter('Kp_angular', 3.0)
+        self.declare_parameter('Ki_linear', 0.1)
+        self.declare_parameter('Ki_angular', 0.1)
         self.declare_parameter('windup_clip', 10.)
         self.declare_parameter('publish_log', True)
         self.declare_parameter('regularization_weight', 0.001)
         self.declare_parameter('test_execution_time', False)
-        self.Kp = self.get_parameter('Kp').get_parameter_value().double_value
-        self.Ki = self.get_parameter('Ki').get_parameter_value().double_value
         self.integrator = np.zeros(6)
         self.windup = self.get_parameter('windup_clip').get_parameter_value().double_value
         self.reg_weight = self.get_parameter('regularization_weight').get_parameter_value().double_value
@@ -53,6 +53,23 @@ class PoseBasedATS(Node):
 
         self.publisher_ki_error = self.create_publisher(Float64, '/controller/optimizer/ki_error', 10)
         self.publisher_regularization = self.create_publisher(Float64, '/controller/optimizer/regularization', 10)
+
+        # Gains
+        self.Kp = np.eye(6)
+        self.Kp[0,0] = self.get_parameter('Kp_linear').get_parameter_value().double_value
+        self.Kp[1,1] = self.get_parameter('Kp_linear').get_parameter_value().double_value
+        self.Kp[2,2] = self.get_parameter('Kp_linear').get_parameter_value().double_value
+        self.Kp[3,3] = self.get_parameter('Kp_angular').get_parameter_value().double_value
+        self.Kp[4,4] = self.get_parameter('Kp_angular').get_parameter_value().double_value
+        self.Kp[5,5] = self.get_parameter('Kp_angular').get_parameter_value().double_value
+
+        self.Ki = np.eye(6)
+        self.Ki[0,0] = self.get_parameter('Ki_linear').get_parameter_value().double_value
+        self.Ki[1,1] = self.get_parameter('Ki_linear').get_parameter_value().double_value
+        self.Ki[2,2] = self.get_parameter('Ki_linear').get_parameter_value().double_value
+        self.Ki[3,3] = self.get_parameter('Ki_angular').get_parameter_value().double_value
+        self.Ki[4,4] = self.get_parameter('Ki_angular').get_parameter_value().double_value
+        self.Ki[5,5] = self.get_parameter('Ki_angular').get_parameter_value().double_value
 
         # Data
         reference_pose = self.get_parameter('reference_pose').get_parameter_value().double_array_value
@@ -118,11 +135,11 @@ class PoseBasedATS(Node):
 
         # Check for contact through SSIM
         if self.md_state == 8: # If contact, accumulate integrator
-            self.integrator += self.Ki * e_sr
+            self.integrator += self.Ki @ e_sr
         else: # If not contact, reset integrator
             self.integrator = 0.
 
-        u_ss = self.Kp*e_sr + np.clip(self.integrator,-self.windup, self.windup)
+        u_ss = self.Kp@e_sr + np.clip(self.integrator,-self.windup, self.windup)
 
         # Control law
         U_SS = self.vector_to_transformation(u_ss)

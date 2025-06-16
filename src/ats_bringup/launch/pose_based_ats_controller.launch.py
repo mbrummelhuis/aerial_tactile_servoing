@@ -73,8 +73,10 @@ def generate_launch_description():
         parameters=[
             {'frequency': 20.},
             {'reference_pose': [0., 0., -0.005]},
-            {'Kp': 1.5},
-            {'Ki': 0.1},
+            {'Kp_linear': 5.0},
+            {'Kp_angular': 0.5},
+            {'Ki_linear': 0.1},
+            {'Ki_angular':0.01 },
             {'windup_clip': 1.},
             {'publish_log': False},
             {'regularization_weight': 0.001},
