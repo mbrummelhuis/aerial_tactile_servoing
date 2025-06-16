@@ -71,11 +71,12 @@ def generate_launch_description():
         name='pose_based_ats',
         output='screen',
         parameters=[
-            {'frequency': LaunchConfiguration('major_frequency')},
-            {'reference_pose': [0., 0., -0.002]},
+            {'frequency': 20.},
+            {'reference_pose': [0., 0., -0.005]},
             {'Kp': 1.5},
             {'Ki': 0.1},
             {'windup_clip': 1.},
+            {'publish_log': False},
             {'regularization_weight': 0.001},
             {'test_execution_speed': False}
         ],
@@ -102,7 +103,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'source': 0},
-            {'frequency': LaunchConfiguration('major_frequency')},
+            {'frequency': 9.},
             {'verbose': False},
             {'test_model_time': False},
             {'save_debug_image': False},

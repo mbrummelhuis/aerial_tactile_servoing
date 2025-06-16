@@ -21,6 +21,7 @@ class PoseBasedATS(Node):
         self.declare_parameter('Kp', 3.0)
         self.declare_parameter('Ki', 0.1)
         self.declare_parameter('windup_clip', 10.)
+        self.declare_parameter('publish_log', True)
         self.declare_parameter('regularization_weight', 0.001)
         self.declare_parameter('test_execution_time', False)
         self.Kp = self.get_parameter('Kp').get_parameter_value().double_value
@@ -84,9 +85,9 @@ class PoseBasedATS(Node):
         self.weighting_matrix[3,3] = 10 # Roll - high penalty
         self.weighting_matrix[4,4] = 10 # Pitch - high penalty
         self.weighting_matrix[5,5] = 1
-        self.weighting_matrix[6,6] = 0.1 # Q1 - low penalty
+        self.weighting_matrix[6,6] = 1 # Q1 - low penalty
         self.weighting_matrix[7,7] = 10 # Q2 - high penalty
-        self.weighting_matrix[8,8] = 0.1 # Q3 - low penalty
+        self.weighting_matrix[8,8] = 1 # Q3 - low penalty
 
         # Timer
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
