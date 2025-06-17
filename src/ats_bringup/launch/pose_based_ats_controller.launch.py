@@ -55,7 +55,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': LaunchConfiguration('major_frequency')},
-            {'takeoff_altitude': -1.5},
+            {'takeoff_altitude': -1.8},
             {'landing_velocity': -0.5},
             {'search_velocity': 0.05},
             {'hover_time': 3.0},
@@ -72,7 +72,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': 20.},
-            {'reference_pose': [0., 0., -0.003]},
+            {'reference_pose': [0., 0., -0.005]},
             {'Kp_linear': 5.0},
             {'Kp_angular': 0.5},
             {'Ki_linear': 0.1},
