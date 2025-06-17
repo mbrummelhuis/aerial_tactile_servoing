@@ -78,7 +78,7 @@ class MissionDirectorPy(Node):
         self.publisher_servo_state = self.create_publisher(JointState, '/servo/in/state', 10)
 
         # set initial state
-        self.FSM_state = 'wait_for_servo_driver'
+        self.FSM_state = 'entrypoint'
         self.input_state = 0
         self.first_state_loop = True
         self.state_start_time = datetime.datetime.now()
