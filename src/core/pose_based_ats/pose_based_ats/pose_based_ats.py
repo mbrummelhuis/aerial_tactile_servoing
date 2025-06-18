@@ -95,16 +95,30 @@ class PoseBasedATS(Node):
         self.md_state = 0
 
         # Custom weighting matrix for the regularization of the full kinematics case
-        self.weighting_matrix =  np.eye(9)
-        self.weighting_matrix[0,0] = 1
-        self.weighting_matrix[1,1] = 1
-        self.weighting_matrix[2,2] = 1
-        self.weighting_matrix[3,3] = 10 # Roll - high penalty
-        self.weighting_matrix[4,4] = 10 # Pitch - high penalty
-        self.weighting_matrix[5,5] = 1
-        self.weighting_matrix[6,6] = 1 # Q1 - low penalty
-        self.weighting_matrix[7,7] = 10 # Q2 - high penalty
-        self.weighting_matrix[8,8] = 1 # Q3 - low penalty
+        self.weighting_matrix_deviation =  np.eye(9)
+        self.weighting_matrix_deviation[0,0] = 1
+        self.weighting_matrix_deviation[1,1] = 1
+        self.weighting_matrix_deviation[2,2] = 1
+        self.weighting_matrix_deviation[3,3] = 10 # Roll - high penalty
+        self.weighting_matrix_deviation[4,4] = 10 # Pitch - high penalty
+        self.weighting_matrix_deviation[5,5] = 1
+        self.weighting_matrix_deviation[6,6] = 0.1 # Q1 - low penalty
+        self.weighting_matrix_deviation[7,7] = 10 # Q2 - high penalty
+        self.weighting_matrix_deviation[8,8] = 0.1 # Q3 - low penalty
+
+        self.weighting_matrix_nominal =  np.eye(9)
+        self.weighting_matrix_nominal[0,0] = 0
+        self.weighting_matrix_nominal[1,1] = 0
+        self.weighting_matrix_nominal[2,2] = 0
+        self.weighting_matrix_nominal[3,3] = 0 # Roll - high penalty
+        self.weighting_matrix_nominal[4,4] = 0 # Pitch - high penalty
+        self.weighting_matrix_nominal[5,5] = 0
+        self.weighting_matrix_nominal[6,6] = 1 # Q1 - low penalty
+        self.weighting_matrix_nominal[7,7] = 1 # Q2 - high penalty
+        self.weighting_matrix_nominal[8,8] = 1 # Q3 - low penalty
+
+        self.dev_mutliplier = 1.0 # Make higher than 1 to emphasize, lower than 1 to decrease 'springback'
+        self.nominal_state = np.array([0, 0, 0, 0, 0, 0, np.pi/3, 0, np.pi/6])
 
         # Timer
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
@@ -437,7 +451,9 @@ class PoseBasedATS(Node):
         ang_err = np.linalg.norm(delta_R.as_rotvec())
 
         error = pos_err**2 + ang_err**2
-        regularization = self.reg_weight * np.matmul((state-current_state), np.matmul(self.weighting_matrix, (state-current_state)))
+        regularization = self.reg_weight * ( \
+            self.dev_mutliplier * np.matmul((state-current_state), np.matmul(self.weighting_matrix_deviation, (state-current_state))) + \
+            np.matmul((state-self.nominal_state), np.matmul(self.weighting_matrix_nominal), (state-self.nominal_state)))
         return error + regularization
 
     def inverse_kinematics(self, P_des, bounds=None):
