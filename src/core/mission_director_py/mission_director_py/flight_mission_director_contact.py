@@ -263,7 +263,8 @@ class MissionDirectorPy(Node):
                     self.vehicle_trajectory_setpoint.position[0], 
                     self.vehicle_trajectory_setpoint.position[1], 
                     self.vehicle_trajectory_setpoint.position[2], 
-                    self.vehicle_trajectory_setpoint.yaw)
+                    self.vehicle_trajectory_setpoint.yaw,
+                    self.vehicle_trajectory_setpoint.yawspeed)
                 self.move_arm_to_position(
                     self.servo_reference.position[0],
                     self.servo_reference.position[1],
@@ -350,13 +351,13 @@ class MissionDirectorPy(Node):
         msg = OffboardControlMode()
         msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
         msg.position = True
-        msg.velocity = False
+        msg.velocity = True
         msg.acceleration = False
         msg.attitude = False
         msg.body_rate = False
         self.publisher_offboard_control_mode.publish(msg)
 
-    def publishTrajectoryPositionSetpoint(self, x, y, z, yaw):
+    def publishTrajectoryPositionSetpoint(self, x, y, z, yaw, yawspeed=0.):
         # If clipping is not zero, clip the position
         if self.position_clip > 0.1:
             x_clipped = clip(x, -self.position_clip, self.position_clip)
@@ -367,6 +368,7 @@ class MissionDirectorPy(Node):
         msg.position[1] = y_clipped
         msg.position[2] = z_clipped
         msg.yaw = yaw
+        msg.yawspeed=yawspeed
         msg.timestamp = int(self.get_clock().now().nanoseconds/1000)
         self.publisher_vehicle_trajectory_setpoint.publish(msg)
 
