@@ -50,6 +50,7 @@ class PoseBasedATS(Node):
         self.publisher_correction = self.create_publisher(TwistStamped, '/controller/out/correction', 10)
         self.publisher_drone_ref_twist = self.create_publisher(TwistStamped, '/controller/out/trajectory_setpoint_twist', 10)
         self.publisher_drone_actual_position = self.create_publisher(TwistStamped, '/controller/out/vehicle_visual_odometry', 10)
+        self.publisher_inertial_contact_frame_pose = self.create_publisher(TwistStamped, '/controller/out/inertial_contact_frame_pose', 10)
 
         self.publisher_ki_error = self.create_publisher(Float64, '/controller/optimizer/ki_error', 10)
         self.publisher_regularization = self.create_publisher(Float64, '/controller/optimizer/regularization', 10)
@@ -142,8 +143,8 @@ class PoseBasedATS(Node):
 
         self.publisher_drone_actual_position.publish(twistmsg)
 
-        # Evaluate the error - TacTip output is in deg and mm
-        P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x/180.*np.pi, self.tactip.twist.angular.y/180.*np.pi, self.tactip.twist.linear.z/1000.)
+        # Evaluate the error
+        P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x, self.tactip.twist.angular.y, self.tactip.twist.linear.z)
         E_Sref = P_SC @ self.P_Cref
         self.publish_transform(self.P_Cref, self.publisher_reference_sensor_pose_contact)
         self.publish_transform(E_Sref, self.publisher_error)
@@ -160,6 +161,9 @@ class PoseBasedATS(Node):
         # Control law
         U_SS = self.vector_to_transformation(u_ss)
         P_S = self.forward_kinematics(state)
+
+        P_C = P_S @ P_SC
+        self.publish_transform(P_C, self.publisher_inertial_contact_frame_pose)
 
         # Publish the forward kinematics for reference
         self.publish_transform(P_S, self.publisher_forward_kinematics)

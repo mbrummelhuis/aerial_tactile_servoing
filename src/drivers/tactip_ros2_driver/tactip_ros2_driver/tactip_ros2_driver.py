@@ -113,12 +113,12 @@ class TactipDriver(Node):
         # The model outputs are in mm and deg, so convert to SI
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.twist.linear.x = rot_pred_pose[0]
-        msg.twist.linear.y = rot_pred_pose[1]
-        msg.twist.linear.z = rot_pred_pose[2]
-        msg.twist.angular.x = rot_pred_pose[3]
-        msg.twist.angular.y = rot_pred_pose[4]
-        msg.twist.angular.z = rot_pred_pose[5]
+        msg.twist.linear.x = rot_pred_pose[0]/1000.
+        msg.twist.linear.y = rot_pred_pose[1]/1000.
+        msg.twist.linear.z = rot_pred_pose[2]/1000.
+        msg.twist.angular.x = rot_pred_pose[3]*0.0174532925 # deg2rad
+        msg.twist.angular.y = rot_pred_pose[4]*0.0174532925 # deg2rad
+        msg.twist.angular.z = rot_pred_pose[5]*0.0174532925 # deg2rad
         self.publisher_pose_.publish(msg)
         #self.get_logger().info(f"Published data: {msg}")
 
