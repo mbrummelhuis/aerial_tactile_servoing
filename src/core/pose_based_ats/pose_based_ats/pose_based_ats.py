@@ -114,9 +114,9 @@ class PoseBasedATS(Node):
         self.weighting_matrix_nominal[3,3] = 0 # Roll - high penalty
         self.weighting_matrix_nominal[4,4] = 0 # Pitch - high penalty
         self.weighting_matrix_nominal[5,5] = 0
-        self.weighting_matrix_nominal[6,6] = 0 # Q1 - low penalty
-        self.weighting_matrix_nominal[7,7] = 0 # Q2 - high penalty
-        self.weighting_matrix_nominal[8,8] = 0 # Q3 - low penalty
+        self.weighting_matrix_nominal[6,6] = 1 # Q1 - low penalty
+        self.weighting_matrix_nominal[7,7] = 1 # Q2 - high penalty
+        self.weighting_matrix_nominal[8,8] = 1 # Q3 - low penalty
 
         self.dev_mutliplier = 1.0 # Make higher than 1 to emphasize, lower than 1 to decrease 'springback'
         self.nominal_state = np.array([0, 0, 0, 0, 0, 0, np.pi/3, 0, np.pi/6])

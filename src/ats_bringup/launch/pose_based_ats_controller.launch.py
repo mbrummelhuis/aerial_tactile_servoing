@@ -58,7 +58,7 @@ def generate_launch_description():
             {'takeoff_altitude': -1.6},
             {'landing_velocity': -0.5},
             {'search_velocity': 0.05},
-            {'hover_time': 3.0},
+            {'hover_time': 1.0},
             {'position_clip': 3.0}
         ],
         arguments=['--ros-args', '--log-level', 'info']
@@ -74,8 +74,8 @@ def generate_launch_description():
             {'frequency': 20.},
             {'reference_pose': [0., 0., -0.004]},
             {'Kp_linear': 5.0},
-            {'Kp_angular': 0.5},
-            {'Ki_linear': 0.1},
+            {'Kp_angular': 0.3},
+            {'Ki_linear': 0.2},
             {'Ki_angular':0.01 },
             {'windup_clip': 0.1},
             {'publish_log': False},

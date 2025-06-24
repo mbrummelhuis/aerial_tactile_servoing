@@ -141,35 +141,21 @@ class MissionDirectorPy(Node):
                 self.move_arm_to_position(pi/2, 0.0, -1.85)
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
-                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
-                    self.transition_state(new_state='wait_for_arm_offboard')
+                if (datetime.datetime.now() - self.state_start_time).seconds > 2 or self.input_state == 1:
+                    self.transition_state(new_state='extend_arm')
                     
             case('extend_arm'):
                 self.move_arm_to_position(pi/2, 0.0, 0.0)
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
-                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
-                    self.transition_state(new_state='move_arm_landed2')
-
-            case('ats_position_landed'):
-                self.move_arm_to_position(pi/3, 0.0, pi/6)
-                self.publishMDState(1)
-                 # Wait 5 seconds until the arm is in position
-                if (datetime.datetime.now() - self.state_start_time).seconds > 10 or self.input_state == 1:
-                    self.transition_state(new_state='move_arm_landed2')
-
-            case('extend_arm_up'):
-                self.move_arm_to_position(0.0, 0.0, 0.0)
-                self.publishMDState(1)
-                 # Wait 5 seconds until the arm is in position
-                if (datetime.datetime.now() - self.state_start_time).seconds > 10 or self.input_state == 1:
+                if (datetime.datetime.now() - self.state_start_time).seconds > 3 or self.input_state == 1:
                     self.transition_state(new_state='move_arm_landed2')
 
             case('move_arm_landed2'):
                 self.move_arm_to_position(pi/2, 0.0, -1.85)
                 self.publishMDState(1)
                  # Wait 5 seconds until the arm is in position
-                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state == 1:
+                if (datetime.datetime.now() - self.state_start_time).seconds > 2 or self.input_state == 1:
                     self.transition_state(new_state='wait_for_arm_offboard')
 
             case('wait_for_arm_offboard'):
@@ -236,7 +222,7 @@ class MissionDirectorPy(Node):
                 self.y_forward_setpoint = self.y_setpoint
 
                 # Transition
-                if (datetime.datetime.now() - self.state_start_time).seconds > 5 or self.input_state==1:
+                if (datetime.datetime.now() - self.state_start_time).seconds > 2.5 or self.input_state==1:
                     self.transition_state('look_for_contact')
                 elif not self.offboard or self.killed or self.input_state == 2:
                     self.transition_state('emergency')
