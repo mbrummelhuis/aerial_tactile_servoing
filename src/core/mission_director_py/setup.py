@@ -28,6 +28,7 @@ setup(
             'flight_mission_director_contact = mission_director_py.flight_mission_director_contact:main',
             'flight_mission_director_takeoff_land = mission_director_py.flight_mission_director_takeoff_land:main',
             'flight_mission_director_waypoints = mission_director_py.flight_mission_director_waypoints:main',
+            'uam_md_test = mission_director_py.uam_md_test:main',
         ],
     },
 )
