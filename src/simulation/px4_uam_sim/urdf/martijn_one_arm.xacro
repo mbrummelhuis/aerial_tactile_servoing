@@ -1,0 +1,516 @@
+<?xml version="1.0"?>
+<robot name="martijn" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:property name="uses_real_torques" value="true"/>
+
+  <link name="base_link">
+    <collision>
+      <origin xyz="0 0 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.4 0.4 0.1"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="$(find px4_uam_sim)/meshes/Martijn.stl"/>
+      </geometry>
+      <material name="darkgray">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>      
+    </visual>
+    <inertial>
+      <mass value="2.0"/>
+      <inertia ixx="0.02966" ixy="0.0" ixz="0.0"
+        iyy="0.04466" iyz="0.0"
+        izz="0.06833"/>
+    </inertial>
+  </link>
+    <gazebo reference="base_link">
+      <sensor name="air_pressure_sensor" type="air_pressure">
+        <always_on>1</always_on>
+        <update_rate>50</update_rate>
+        <air_pressure>
+          <pressure>
+            <noise type="gaussian">
+              <mean>0</mean>
+              <stddev>0.01</stddev>
+            </noise>
+          </pressure>
+        </air_pressure>
+      </sensor>
+      <sensor name="imu_sensor" type="imu">
+        <always_on>1</always_on>
+        <update_rate>1000</update_rate>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0001</stddev>
+                <dynamic_bias_stddev>0</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0001</stddev>
+                <dynamic_bias_stddev>0</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0001</stddev>
+                <dynamic_bias_stddev>0</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0001</stddev>
+                <dynamic_bias_stddev>0</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>300</dynamic_bias_correlation_time>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0001</stddev>
+                <dynamic_bias_stddev>0</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>300</dynamic_bias_correlation_time>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0.0001</stddev>
+                <dynamic_bias_stddev>0</dynamic_bias_stddev>
+                <dynamic_bias_correlation_time>300</dynamic_bias_correlation_time>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+      <sensor name="navsat_sensor" type="navsat">
+        <always_on>1</always_on>
+        <update_rate>100</update_rate>
+      </sensor>
+    </gazebo>
+  
+  
+<xacro:macro name="gazebo_rotor"
+    params="direction parent motor_number color dx dy dz">
+
+    <gazebo>
+    <link name="rotor_${motor_number}">
+      <gravity>true</gravity>
+      <self_collide>false</self_collide>
+      <velocity_decay/>
+      <pose>${dx} ${dy} ${dz} 0 0 0</pose>
+      <inertial>
+          <mass>0.016076923076923075</mass>
+          <inertia>
+            <ixx>3.8464910483993325e-07</ixx>
+            <iyy>2.6115851691700804e-05</iyy>
+            <izz>2.649858234714004e-05</izz>
+          </inertia>
+      </inertial>
+      <visual name="rotor_${motor_number}_visual">
+        <pose>0 0 0 0 0 1.5708</pose>
+        <geometry>
+          <mesh>
+            <scale>0.67 0.67 0.8461538461538461</scale>
+            <uri>$(find px4_uam_sim)/meshes/centered_prop_ccw.stl</uri>
+          </mesh>
+        </geometry>
+        <material>
+          <script>
+            <name>Gazebo/${color}</name>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+          </script>
+        </material>
+      </visual>
+      <collision name="rotor_${motor_number}_collision">
+        <pose>0 0 0 0 0 1.5708</pose>
+        <geometry>
+          <box>
+            <size>0.26 0.016923076923076923 0.0008461538461538462</size>
+          </box>
+        </geometry>
+        <surface>
+          <contact>
+            <ode>
+              <min_depth>0.001</min_depth>
+              <max_vel>0</max_vel>
+            </ode>
+          </contact>
+          <friction>
+            <ode/>
+          </friction>
+        </surface>
+      </collision>
+    </link>
+    <joint name="rotor_${motor_number}_joint" type="revolute">
+      <parent>${parent}</parent>
+      <child>rotor_${motor_number}</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <lower>-1e+16</lower>
+          <upper>1e+16</upper>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <jointName>rotor_${motor_number}_joint</jointName>
+      <linkName>rotor_${motor_number}</linkName>
+      <turningDirection>${direction}</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>1000.0</maxRotVelocity>
+      <motorConstant>4e-05</motorConstant>
+      <momentConstant>0.016</momentConstant>
+      <commandSubTopic>command/motor_speed</commandSubTopic>
+      <motorNumber>${motor_number}</motorNumber>
+      <rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+      <motorType>velocity</motorType>
+    </plugin>
+
+  </gazebo>
+</xacro:macro>
+
+<!-- ============ ARM NUMBER 1 ================ -->  
+  
+  <link name="shoulder_link_1">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.067" length="0.015"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="$(find px4_uam_sim)/meshes/ShoulderLink.stl"/>
+      </geometry>
+      <material name="darkgray">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>      
+    </visual>
+    <inertial>
+      <mass value="0.05"/>
+      <inertia ixx="9.48625e-05" ixy="0.0" ixz="0.0"
+        iyy="9.48625e-05" iyz="0.0"
+        izz="0.00018785"/>
+    </inertial>
+  </link>
+  <joint name="shoulder_joint_1" type="revolute">
+    <parent link="base_link"/>
+    <child link="shoulder_link_1"/>
+    <origin xyz="0.015 0 0" rpy="1.5708 -1.5708 -1.5708"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="-6.28" upper="6.28" velocity="2.0" effort="100.0"/>
+    <dynamics damping="0.005" friction="0.01"/>
+  </joint>
+  <link name="motor_link_shoulder_1">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.025 0.035 0.045"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="$(find px4_uam_sim)/meshes/Servo.stl"/>
+      </geometry>
+      <material name="darkgray">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>      
+    </visual>
+    <inertial>
+      <mass value="0.07"/>
+      <inertia ixx="1.89583331e-05" ixy="0.0" ixz="0.0"
+        iyy="1.54583331e-05" iyz="0.0"
+        izz="1.0791662e-05"/>
+    </inertial>
+  </link>
+  <joint name="motor_link_shoulder_1_joint" type="fixed">
+    <parent link="shoulder_link_1"/>
+    <child link="motor_link_shoulder_1"/>
+    <origin xyz="0.097 0 0.014" rpy="0 1.5708 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="0" velocity="0" effort="0"/>
+  </joint>  
+  <link name="elbow_link_1">
+    <collision>
+      <origin xyz="-0.16 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.34 0.024 0.054"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="$(find px4_uam_sim)/meshes/ElbowLink.stl"/>
+      </geometry>
+      <material name="darkgray">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>      
+    </visual>
+    <inertial>
+      <origin xyz="-0.16 0 0" rpy="0 0 0"/>
+      <mass value="0.03"/>
+      <inertia ixx="8.73e-06" ixy="0.0" ixz="0.0"
+        iyy="0.000296289999" iyz="0.0"
+        izz="0.00029043996"/>
+    </inertial>
+  </link>
+  <joint name="elbow_joint_1" type="revolute">
+    <parent link="motor_link_shoulder_1"/>
+    <child link="elbow_link_1"/>
+    <origin xyz="0 0 0.0125" rpy="1.5708 1.5708 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.5708" upper="1.5708" velocity="2" effort="100"/>
+    <dynamics damping="0.01" friction="0.1"/>
+  </joint>  
+  <link name="motor_link_elbow_1">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.025 0.035 0.045"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="$(find px4_uam_sim)/meshes/ServoElbow.stl"/>
+      </geometry>
+      <material name="darkgray">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>      
+    </visual>
+    <inertial>
+      <mass value="0.07"/>
+      <inertia ixx="1.89583331e-05" ixy="0.0" ixz="0.0"
+        iyy="1.54583331e-05" iyz="0.0"
+        izz="1.0791662e-05"/>
+    </inertial>
+  </link>
+  <joint name="motor_link_elbow_1_joint" type="fixed">
+    <parent link="elbow_link_1"/>
+    <child link="motor_link_elbow_1"/>
+    <origin xyz="-0.05 0.015 0" rpy="0 -1.5708 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="0" velocity="0" effort="0"/>
+  </joint>
+  <link name="forearm_link_1">
+    <collision>
+      <origin xyz="-0.135 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.27 0.024 0.054"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="$(find px4_uam_sim)/meshes/ForearmLink.stl"/>
+      </geometry>
+      <material name="darkgray">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>      
+    </visual>
+    <inertial>
+      <origin xyz="-0.135 0 0" rpy="0 0 0"/>
+      <mass value="0.03"/>
+      <inertia ixx="4.9e-07" ixy="0.0" ixz="0.0"
+        iyy="0.00012446" iyz="0.0"
+        izz="0.00012446"/>
+    </inertial>
+  </link>
+  <joint name="forearm_joint_1" type="revolute">
+    <parent link="elbow_link_1"/>
+    <child link="forearm_link_1"/>
+    <origin xyz="-0.31 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.3" upper="2.3" velocity="20" effort="100"/>
+    <dynamics damping="0.0001" friction="0.0"/>    
+  </joint>  
+  <link name="end_effector_link">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.03 0.03 0.03"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.03 0.03 0.03"/>
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.2 0.2 1"/>
+      </material>      
+    </visual>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.01"/>
+      <inertia ixx="4.9e-07" ixy="0.0" ixz="0.0"
+        iyy="0.00012446" iyz="0.0"
+        izz="0.00012446"/>
+    </inertial>
+  </link>
+  <joint name="end_effector_fixed_joint" type="revolute">
+    <parent link="forearm_link_1"/>
+    <child link="end_effector_link"/>
+    <origin xyz="-0.278 0 0" rpy="1.5708 0 1.5708"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="0" upper="0" velocity="20" effort="100"/>
+    <dynamics damping="0.0001" friction="0.0"/>    
+  </joint>
+  <gazebo>
+      <plugin
+      filename="gz-sim-odometry-publisher-system"
+      name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>base_link</odom_frame>
+      <robot_base_frame>end_effector_link</robot_base_frame>
+      <dimensions>3</dimensions>
+      <odom_topic>/forward_kinematics</odom_topic>
+    </plugin>
+  </gazebo>
+<!-- ============================ -->
+
+  <xacro:gazebo_rotor
+    direction="ccw" 
+    parent="base_link"
+    motor_number="0"
+    color="Blue"
+    dx="0.2495"
+    dy="-0.208"
+    dz="0.03">
+  </xacro:gazebo_rotor>
+
+  <xacro:gazebo_rotor
+    direction="ccw" 
+    parent="base_link"
+    motor_number="1"
+    color="Blue"
+    dx="-0.2495"
+    dy="0.208"
+    dz="0.03">
+  </xacro:gazebo_rotor>
+
+  <xacro:gazebo_rotor
+    direction="cw" 
+    parent="base_link"
+    motor_number="2"
+    color="Red"
+    dx="0.2495"
+    dy="0.208"
+    dz="0.03">
+  </xacro:gazebo_rotor>
+
+  <xacro:gazebo_rotor
+    direction="cw" 
+    parent="base_link"
+    motor_number="3"
+    color="Red"
+    dx="-0.2495"
+    dy="-0.208"
+    dz="0.03">
+  </xacro:gazebo_rotor>
+  <gazebo>
+    <plugin
+      filename="gz-sim-odometry-publisher-system"
+      name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <dimensions>3</dimensions>
+    </plugin>
+<!--
+    <plugin filename="MocapPub" name="gz::sim::systems::MocapPub">
+    </plugin>
+-->
+    <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
+	<joint_name>shoulder_joint_1</joint_name>
+	<joint_name>elbow_joint_1</joint_name>
+	<joint_name>forearm_joint_1</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+	<joint_name>shoulder_joint_1</joint_name>
+	<initial_velocity>0.0</initial_velocity>
+	<use_force_commands>${uses_real_torques}</use_force_commands>
+	<topic>shoulder_1_joint_vel</topic>
+	<p_gain>3.0</p_gain>
+	<d_gain>0.001</d_gain>
+	<i_gain>3.0</i_gain>
+	<i_max>5</i_max>
+	<i_min>-5</i_min>
+    </plugin>
+    <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+	<joint_name>elbow_joint_1</joint_name>
+	<initial_velocity>0.0</initial_velocity>
+	<use_force_commands>${uses_real_torques}</use_force_commands>
+	<topic>elbow_1_joint_vel</topic>
+	<p_gain>3.0</p_gain>
+	<d_gain>0.0</d_gain>
+	<i_gain>0.5</i_gain>
+	<i_max>1</i_max>
+	<i_min>-1</i_min>
+    </plugin>
+    <plugin filename="gz-sim-joint-controller-system" name="gz::sim::systems::JointController">
+	<joint_name>forearm_joint_1</joint_name>
+	<initial_velocity>0.0</initial_velocity>
+	<use_force_commands>${uses_real_torques}</use_force_commands>
+	<topic>forearm_1_joint_vel</topic>
+	<p_gain>0.3</p_gain>
+	<d_gain>0.0</d_gain>
+	<i_gain>0.3</i_gain>
+	<i_max>1</i_max>
+	<i_min>-1</i_min>
+    </plugin>
+
+  </gazebo>
+  <gazebo reference="base_link">
+    <collision name="base_link_collision">
+      <surface>
+        <bounce>
+          <restitution_coefficient>0.01</restitution_coefficient>
+        </bounce>
+        <contact>
+          <ode>
+            <max_vel>100.0</max_vel>
+            <min_depth>0.001</min_depth>
+          </ode>
+        </contact>
+        <friction>
+          <ode>
+            <mu>1000000.0</mu>
+            <mu2>1000000.0</mu2>
+          </ode>
+        </friction>
+      </surface>        
+    </collision>
+  </gazebo>
+  <gazebo reference="base_link">
+    <velocity_decay>
+      <linear>0.0</linear>
+      <angular>0.0</angular>
+    </velocity_decay>    
+  </gazebo>
+  
+  
+
+
+</robot>
