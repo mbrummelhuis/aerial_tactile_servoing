@@ -23,7 +23,7 @@ from px4_msgs.msg import OffboardControlMode
 class MissionDirectorPy(Node):
 
     def __init__(self):
-        super().__init__('mission_director_py')
+        super().__init__('mission_director_')
 
         # Parameters
         self.declare_parameter('frequency', 10.)

@@ -1,7 +1,7 @@
 import datetime
 import rclpy
 
-from mission_director_py.uam_state_machine import UAMStateMachine
+from mission_director.uam_state_machine import UAMStateMachine
 
 class MissionDirectorTest(UAMStateMachine):
     def __init__(self):
