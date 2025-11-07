@@ -23,7 +23,11 @@
 #include "rcutils/cmdline_parser.h"
 #include "dynamixel_sdk/dynamixel_sdk.h"
 
-#include "sensor_msgs/msg/joint_state.hpp"
+#include <sensor_msgs/msg/joint_state.hpp>
+
+#define DEVICE_NAME "/dev/U2D2"
+#define BAUDRATE 115200
+#define PROTOCOL_VERSION 2.0
 
 namespace DXLREGISTER
 {
@@ -34,7 +38,6 @@ namespace DXLREGISTER
     uint8_t const DRIVE_MODE        = 0x0A; // Size: 1 byte
     uint8_t const OPERATING_MODE    = 0x0B; // Size; 1 byte
     uint8_t const SHADOW_ID         = 0x0C; // Size: 1 byte
-    uint8_t const PROTOCOL_VERSION  = 0x0D; // Size: 1 byte
     uint8_t const HOMING_OFFSET     = 0x14; // Size: 4 bytes
     uint8_t const MOVING_THRESHOLD  = 0x18; // Size: 4 bytes
     uint8_t const CURRENT_LIMIT     = 0x26; // Size: 2 bytes
@@ -70,15 +73,6 @@ enum UNIT
     DEG = 2
 };
 
-struct DriverSettings
-{
-    std::string port = "/dev/U2D2";
-    long baud_rate = 115200;
-    UNIT unit = RAD;
-    float frequency= 10.;
-    float protocol_version = 2.0;
-};
-
 struct ServoData
 {
     uint8_t id;
@@ -88,7 +82,7 @@ struct ServoData
     double present_position;
     double present_velocity;
     double present_current;
-    double present_pwm;
+    uint32_t present_pwm;
     int16_t home_position; // In ticks at the servo horn
     double max_velocity; // In ticks/s
     int direction;
@@ -99,29 +93,39 @@ class DXLDriver : public rclcpp::Node
 {
 public:
 
-DXLDriver();
+    DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupSyncRead *velocityReader,
+                dynamixel::GroupSyncRead *currentReader, dynamixel::GroupSyncRead *PWMReader, 
+                dynamixel::GroupSyncWrite *positionWriter, dynamixel::GroupSyncWrite *velocityWriter);
     virtual ~DXLDriver();
 
 private:
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_servo_reference;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_servo_state;
 
-    dynamixel::GroupSyncRead gsrPosition;
-    dynamixel::GroupSyncRead gsrVelocity;
-    dynamixel::GroupSyncRead gsrCurrent;
-    dynamixel::GroupSyncRead gsrPWM;
+    dynamixel::GroupSyncRead *gsrPosition;
+    dynamixel::GroupSyncRead *gsrVelocity;
+    dynamixel::GroupSyncRead *gsrCurrent;
+    dynamixel::GroupSyncRead *gsrPWM;
 
-    dynamixel::GroupSyncWrite gswPosition;
-    dynamixel::GroupSyncWrite gswVelocity;
+    dynamixel::GroupSyncWrite *gswPosition;
+    dynamixel::GroupSyncWrite *gswVelocity;
 
     /// @brief Callback for the timer, execute interface loop
     void loop();
     void set_all_position_references();
     void get_all_servo_data();
-    void servoReferenceCallback();
-    void publishServoData();
-    void setupDynamixel(uint8_t dxl_id);
-    double int2rad(uint32_t position_ticks); // return the rad position with gear ratio and direction
+    void servoReferenceCallback(const sensor_msgs::msg::JointState::SharedPtr msg);
+    void publish_all_servo_data();
+    void setup_port();
+    void setup_dynamixel(uint8_t dxl_id);
+    double pos_int2rad(uint32_t position_ticks); // return the rad position with gear ratio and direction
+    double vel_int2rad(uint32_t velocity_ticks);
+    double cur_int2amp(uint32_t current_ticks);
+
+    void get_present_positions();
+    void get_present_velocities();
+    void get_present_currents();
+    void get_present_pwms();
 
     void check_parameter_sizes(size_t num_servos) const;
 
@@ -130,9 +134,8 @@ private:
     dynamixel::PortHandler *portHandler;
     dynamixel::PacketHandler *packetHandler;
 
-    DriverSettings settings_;
     std::vector<uint8_t> ids_;
-    size_t num_servos_;
+    int num_servos_;
     std::vector<ServoData> servodata_;
 
 

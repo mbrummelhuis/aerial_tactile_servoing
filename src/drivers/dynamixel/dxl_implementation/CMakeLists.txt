@@ -14,37 +14,26 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 find_package(dynamixel_sdk REQUIRED)
-find_package(dynamixel_sdk_custom_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 include_directories(include)
 
 # Build
-add_executable(read_write_node src/read_write_node.cpp)
 add_executable(dxl_driver src/dxl_driver.cpp)
-target_link_libraries(read_write_node PUBLIC
-  dynamixel_sdk::dynamixel_sdk
-  ${dynamixel_sdk_custom_interfaces_TARGETS}
-  rclcpp::rclcpp
-)
-target_link_libraries(dxl_driver PUBLIC
-  dynamixel_sdk::dynamixel_sdk
-  ${dynamixel_sdk_custom_interfaces_TARGETS}
-  rclcpp::rclcpp
+ament_target_dependencies(dxl_driver
+  rclcpp
+  dynamixel_sdk
+  sensor_msgs
 )
 
 # Install
 install(TARGETS
-  read_write_node
   dxl_driver
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(PROGRAMS
-  src/read_write_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
 
 # Test
 if(BUILD_TESTING)
