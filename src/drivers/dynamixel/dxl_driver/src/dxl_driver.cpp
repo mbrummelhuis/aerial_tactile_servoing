@@ -18,7 +18,7 @@
 // To test this example, please follow the commands below.
 //
 // Open terminal #1
-// $ ros2 run dynamixel_sdk_examples read_write_node
+// $ ros2 run dynamixel_sdk_examples dxl_driver
 //
 // Open terminal #2 (run one of below commands at a time)
 // $ ros2 topic pub -1 /set_position dynamixel_sdk_custom_interfaces/SetPosition "{id: 1, position: 1000}"
@@ -63,6 +63,7 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
     gswVelocity = velocityWriter;
 
     // Declare all parameters
+    this->declare_parameter("driver.frequency", 1.);
     // Servo parameters
     this->declare_parameter("servos.ids", std::vector<int>{1});
     this->declare_parameter("servos.operating_modes", std::vector<int>{4});
@@ -79,33 +80,68 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
                     [](int val) { return static_cast<uint8_t>(val); });
     num_servos_ = static_cast<int>(int_ids.size());
     check_parameter_sizes(num_servos_); // Check if param sizes match
+    std::vector<int64_t> operating_modes = this->get_parameter("servos.operating_modes").as_integer_array();
+    std::vector<int64_t> directions = this->get_parameter("servos.directions").as_integer_array();
+    std::vector<double> gear_ratios = this->get_parameter("servos.gear_ratios").as_double_array();
+    std::vector<int64_t> homing_modes = this->get_parameter("servos.homing_modes").as_integer_array();
+    std::vector<double> max_speeds = this->get_parameter("servos.max_speeds").as_double_array();
+    for (int i = 0; i < num_servos_; i++)
+    {
+        id2index_[ids_[i]] = i;
+
+        ServoData current_servo_data;
+
+        current_servo_data.operating_mode = static_cast<DXLMode>(operating_modes[i]);
+        current_servo_data.direction = static_cast<int>(directions[i]);
+        current_servo_data.gear_ratio = gear_ratios[i];
+        current_servo_data.goal_position = current_servo_data.present_position;
+        current_servo_data.goal_velocity = current_servo_data.present_velocity;
+        if (homing_modes[i] == 0) // Don't update homing
+        {
+
+        }
+        else if (homing_modes[i] == 1) // Set current
+        {
+
+        }
+        // ...
+        // Assign servo settings here
+        servodata_.push_back(current_servo_data);
+
+        int dxl_addparam_result = false;
+        dxl_addparam_result = gsrPosition->addParam(ids_[i]);
+        if (dxl_addparam_result != true) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncRead Position for Dynamixel ID %d", servodata_[i].id);
+        }
+        dxl_addparam_result = gsrVelocity->addParam(ids_[i]);
+        if (dxl_addparam_result != true) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncRead Velocit for Dynamixel ID %d", servodata_[i].id);
+        }
+        dxl_addparam_result = gsrCurrent->addParam(ids_[i]);
+        if (dxl_addparam_result != true) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncRead Current for Dynamixel ID %d", servodata_[i].id);
+        }
+        dxl_addparam_result = gsrPWM->addParam(ids_[i]);
+        if (dxl_addparam_result != true) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncRead PWMS for Dynamixel ID %d", servodata_[i].id);
+        }
+    }
+    RCLCPP_INFO(this->get_logger(), "Succeeded assigning servodata");
 
     // ROS2 servo interfaces
     sub_servo_reference = this->create_subscription<sensor_msgs::msg::JointState>(
       "/servo/in/state", 10, 
-      std::bind(&DXLDriver::servoReferenceCallback, this, std::placeholders::_1));
+      std::bind(&DXLDriver::servo_reference_callback, this, std::placeholders::_1));
     pub_servo_state = this->create_publisher<sensor_msgs::msg::JointState>("/servo/out/state", 10);
+    RCLCPP_INFO(this->get_logger(), "Succeeded creating ROS2 interfaces");
 
-    // Open Serial Port
-    dxl_comm_result = portHandler->openPort();
-    if (dxl_comm_result == false) {
-        RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to open the port!");
-    } else {
-        RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to open the port.");
-    }
+    // Read current positions and set as reference
+    get_all_servo_data();
+    
 
-    // Set the baudrate of the serial port (use DYNAMIXEL Baudrate)
-    dxl_comm_result = portHandler->setBaudRate(BAUDRATE);
-    if (dxl_comm_result == false) {
-        RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to set the baudrate!");
-    } else {
-        RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to set the baudrate.");
-    }
-
-    setup_port();
-    setup_dynamixel(BROADCAST_ID);
-
-    RCLCPP_INFO(this->get_logger(), "Dynamixel driver node initialized");    
+    // Set up the servos and engage torque
+    setup_dynamixel(BROADCAST_ID); // 
+    RCLCPP_INFO(this->get_logger(), "Succeeded Configuring driver");
 
     // Timer for publishing servo state
     double node_frequency_ = this->get_parameter("driver.frequency").as_double();
@@ -137,14 +173,17 @@ void DXLDriver::set_all_position_references()
     {
         int dxl_addparam_result = false;
         uint8_t param_goal_position[4];
+        int32_t goal_pos_ticks = pos_rad2int(servodata_[i].id, servodata_[i].goal_position);
+        RCLCPP_INFO(this->get_logger(), "goal position %f", servodata_[i].goal_position);
+        RCLCPP_INFO(this->get_logger(), "goal position ticks %i", goal_pos_ticks);
 
-        param_goal_position[0] = DXL_LOBYTE(DXL_LOWORD(servodata_[i].goal_position));
-        param_goal_position[1] = DXL_HIBYTE(DXL_LOWORD(servodata_[i].goal_position));
-        param_goal_position[2] = DXL_LOBYTE(DXL_HIWORD(servodata_[i].goal_position));
-        param_goal_position[3] = DXL_HIBYTE(DXL_HIWORD(servodata_[i].goal_position));
+        param_goal_position[0] = DXL_LOBYTE(DXL_LOWORD(goal_pos_ticks));
+        param_goal_position[1] = DXL_HIBYTE(DXL_LOWORD(goal_pos_ticks));
+        param_goal_position[2] = DXL_LOBYTE(DXL_HIWORD(goal_pos_ticks));
+        param_goal_position[3] = DXL_HIBYTE(DXL_HIWORD(goal_pos_ticks));
         dxl_addparam_result = gswPosition->addParam(ids_[i], param_goal_position);
         if (dxl_addparam_result != true) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncWrite for Dynamixel ID %d", servodata_[i].id);
+            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncWrite for Dynamixel ID %d with error code %i", servodata_[i].id, dxl_addparam_result);
         }
     }
 
@@ -190,57 +229,32 @@ void DXLDriver::publish_all_servo_data()
 
 void DXLDriver::get_present_positions()
 {
-    int dxl_addparam_result = false;
-    for(int i =0; i<num_servos_; i++)
-    {
-        dxl_addparam_result = gsrPosition->addParam(ids_[i]);
-        if (dxl_addparam_result != true) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncWrite for Dynamixel ID %d", servodata_[i].id);
-        }
-    }
-
     dxl_comm_result = gsrPosition->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
     {
         for (int i=0; i<num_servos_; i++)
         {
-            servodata_[i].present_position = pos_int2rad(gsrPosition->getData(ids_[i], DXLREGISTER::PRESENT_POSITION, 4));
+            servodata_[i].present_position = pos_int2rad(servodata_[i].id, gsrPosition->getData(ids_[i], DXLREGISTER::PRESENT_POSITION, 4));
         }
     }
+    gsrPosition->clearParam();
 }
 
 void DXLDriver::get_present_velocities()
 {
-    int dxl_addparam_result = false;
-    for(int i =0; i<num_servos_; i++)
-    {
-        dxl_addparam_result = gsrVelocity->addParam(ids_[i]);
-        if (dxl_addparam_result != true) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncWrite for Dynamixel ID %d", servodata_[i].id);
-        }
-    }
-
     dxl_comm_result = gsrVelocity->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
     {
         for (int i=0; i<num_servos_; i++)
         {
-            servodata_[i].present_velocity = vel_int2rad(gsrVelocity->getData(ids_[i], DXLREGISTER::PRESENT_VELOCITY, 4));
+            servodata_[i].present_velocity = vel_int2rad(servodata_[i].id, gsrVelocity->getData(ids_[i], DXLREGISTER::PRESENT_VELOCITY, 4));
         }
     }
+    gsrVelocity->clearParam();
 }
 
 void DXLDriver::get_present_currents()
 {
-    int dxl_addparam_result = false;
-    for(int i =0; i<num_servos_; i++)
-    {
-        dxl_addparam_result = gsrCurrent->addParam(ids_[i]);
-        if (dxl_addparam_result != true) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncWrite for Dynamixel ID %d", servodata_[i].id);
-        }
-    }
-
     dxl_comm_result = gsrCurrent->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
     {
@@ -249,19 +263,11 @@ void DXLDriver::get_present_currents()
             servodata_[i].present_current = cur_int2amp(gsrCurrent->getData(ids_[i], DXLREGISTER::PRESENT_CURRENT, 4));
         }
     }
+    gsrCurrent->clearParam();
 }
 
 void DXLDriver::get_present_pwms()
 {
-    int dxl_addparam_result = false;
-    for(int i =0; i<num_servos_; i++)
-    {
-        dxl_addparam_result = gsrPWM->addParam(ids_[i]);
-        if (dxl_addparam_result != true) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncWrite for Dynamixel ID %d", servodata_[i].id);
-        }
-    }
-
     dxl_comm_result = gsrPWM->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
     {
@@ -272,12 +278,82 @@ void DXLDriver::get_present_pwms()
     }
 }
 
-double DXLDriver::pos_int2rad(uint32_t position_ticks)
+void DXLDriver::set_home_position_at_current_position()
 {
-    return static_cast<double>(position_ticks);
+    // Update servo current positions
+    int32_t homing_offset;
+    get_present_positions();
+
+    for (int i = 0; i < num_servos_; i++)
+    {
+        // Read current homing offset
+        dxl_comm_result = packetHandler->read4ByteTxRx(
+            portHandler,
+            servodata_[i].id,
+            DXLREGISTER::HOMING_OFFSET,
+            reinterpret_cast<uint32_t *>(&homing_offset),
+            &dxl_error
+        );
+        if (dxl_comm_result!=COMM_SUCCESS)
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Read error, comm result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+        }
+        // Update homing offset with current position
+        int32_t new_homing_offset = pos_rad2int(servodata_[i].id, servodata_[i].present_position) - homing_offset;
+        dxl_comm_result = packetHandler->write4ByteTxRx(
+            portHandler,
+            servodata_[i].id,
+            DXLREGISTER::HOMING_OFFSET,
+            static_cast<uint32_t>(new_homing_offset),
+            &dxl_error
+        );
+        if (dxl_comm_result == COMM_SUCCESS)
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Set homing offset to %d", servodata_[i].id, new_homing_offset);
+        }
+        else
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Failed to set homing offset, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+        }
+    }
 }
 
-double DXLDriver::vel_int2rad(uint32_t velocity_ticks)
+void DXLDriver::enable_torque(int8_t torque_enable)
+{
+    for (int i = 0; i < num_servos_; i++)
+    {
+        // Enable Torque of DYNAMIXEL
+        dxl_comm_result = packetHandler->write1ByteTxRx(
+            portHandler,
+            servodata_[i].id,
+            DXLREGISTER::TORQUE_ENABLE,
+            torque_enable,
+            &dxl_error
+        );
+        if (dxl_comm_result == COMM_SUCCESS)
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Set torque enable %i", servodata_[i].id, torque_enable);
+        }
+        else
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Failed to set torque enable, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+        }
+    }
+}
+
+double DXLDriver::pos_int2rad(uint8_t id, uint32_t position_ticks)
+{
+    int i = id2index_[id];
+    double position_rads = static_cast<double>(servodata_[i].direction) * static_cast<double>(position_ticks) * servodata_[i].gear_ratio / 4096.;
+    return position_rads;
+}
+
+uint32_t DXLDriver::pos_rad2int(uint8_t id, double position_rads)
+{
+    return static_cast<uint32_t>(position_rads);
+}
+
+double DXLDriver::vel_int2rad(uint8_t id, uint32_t velocity_ticks)
 {
     return static_cast<double>(velocity_ticks);
 }
@@ -287,27 +363,12 @@ double DXLDriver::cur_int2amp(uint32_t current_ticks)
     return static_cast<double>(current_ticks);
 }
 
-void DXLDriver::servoReferenceCallback(const sensor_msgs::msg::JointState::SharedPtr msg)
+void DXLDriver::servo_reference_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
 {
-    return;
-}
-
-void DXLDriver::setup_port()
-{
-    dxl_comm_result = portHandler->openPort();
-    if (dxl_comm_result == false) {
-        RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to open the port!");
-    } else {
-        RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to open the port.");
+    for (int i = 0; i < num_servos_; i++)
+    {
+        servodata_[i].goal_position = msg->position[i];
     }
-
-    // Set the baudrate of the serial port (use DYNAMIXEL Baudrate)
-    dxl_comm_result = portHandler->setBaudRate(BAUDRATE);
-    if (dxl_comm_result == false) {
-        RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to set the baudrate!");
-    } else {
-        RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to set the baudrate.");
-    } 
 }
 
 void DXLDriver::setup_dynamixel(uint8_t dxl_id)
@@ -317,14 +378,15 @@ void DXLDriver::setup_dynamixel(uint8_t dxl_id)
         portHandler,
         dxl_id,
         DXLREGISTER::OPERATING_MODE,
-        3,
+        4,
         &dxl_error
     );
+    RCLCPP_INFO(this->get_logger(), "Error %i", dxl_error);
 
     if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to set Position Control Mode.");
+        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "Failed to set Position Control Mode.");
     } else {
-        RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to set Position Control Mode.");
+        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "Succeeded to set Position Control Mode.");
     }
 
     // Enable Torque of DYNAMIXEL
@@ -337,9 +399,9 @@ void DXLDriver::setup_dynamixel(uint8_t dxl_id)
     );
 
     if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(rclcpp::get_logger("read_write_node"), "Failed to enable torque.");
+        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "Failed to enable torque.");
     } else {
-        RCLCPP_INFO(rclcpp::get_logger("read_write_node"), "Succeeded to enable torque.");
+        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "Succeeded to enable torque.");
     }
 }
 
@@ -365,11 +427,6 @@ void DXLDriver::check_parameter_sizes(size_t num_servos) const
         RCLCPP_ERROR(this->get_logger(), "servos.max_speeds not the same size as number of servos!");
         exit(-1);
     }
-    if (this->get_parameter("servos.max_currents").as_double_array().size() != num_servos)
-    {
-        RCLCPP_ERROR(this->get_logger(), "servos.max_currents not the same size as number of servos!");
-        exit(-1);
-    }
     if (this->get_parameter("servos.gear_ratios").as_double_array().size() != num_servos)
     {
         RCLCPP_ERROR(this->get_logger(), "servos.gear_ratios not the same size as number of servos!");
@@ -380,6 +437,24 @@ void DXLDriver::check_parameter_sizes(size_t num_servos) const
         RCLCPP_ERROR(this->get_logger(), "servos.start_offsets not the same size as number of servos!");
         exit(-1);
     }
+}
+
+void setup_port()
+{
+    dxl_comm_result = portHandler->openPort();
+    if (dxl_comm_result == false) {
+        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "Failed to open the port!");
+    } else {
+        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "Succeeded to open the port.");
+    }
+
+    // Set the baudrate of the serial port (use DYNAMIXEL Baudrate)
+    dxl_comm_result = portHandler->setBaudRate(BAUDRATE);
+    if (dxl_comm_result == false) {
+        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "Failed to set the baudrate!");
+    } else {
+        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "Succeeded to set the baudrate.");
+    } 
 }
 
 int main(int argc, char * argv[])
@@ -394,6 +469,8 @@ int main(int argc, char * argv[])
     
     dynamixel::GroupSyncWrite gswPosition(portHandler, packetHandler, DXLREGISTER::GOAL_POSITION, 4);
     dynamixel::GroupSyncWrite gswVelocity(portHandler, packetHandler, DXLREGISTER::GOAL_VELOCITY, 4);
+
+    setup_port();
 
     rclcpp::init(argc, argv);
 

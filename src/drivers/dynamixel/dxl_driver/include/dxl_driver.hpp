@@ -25,8 +25,8 @@
 
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#define DEVICE_NAME "/dev/U2D2"
-#define BAUDRATE 115200
+#define DEVICE_NAME "/dev/ttyUSB0"
+#define BAUDRATE 57600
 #define PROTOCOL_VERSION 2.0
 
 namespace DXLREGISTER
@@ -77,15 +77,16 @@ struct ServoData
 {
     uint8_t id;
     double gear_ratio;
-    std::atomic<double> goal_position; // In ticks
-    std::atomic<double> goal_velocity; // In ticks/s
+    double max_velocity; // In ticks/s
+    int direction;
+    DXLMode operating_mode;
+    float goal_position; // In ticks
+    float goal_velocity; // In ticks/s
     double present_position;
     double present_velocity;
     double present_current;
     uint32_t present_pwm;
     int16_t home_position; // In ticks at the servo horn
-    double max_velocity; // In ticks/s
-    int direction;
 };
 
 
@@ -114,12 +115,13 @@ private:
     void loop();
     void set_all_position_references();
     void get_all_servo_data();
-    void servoReferenceCallback(const sensor_msgs::msg::JointState::SharedPtr msg);
+    void servo_reference_callback(const sensor_msgs::msg::JointState::SharedPtr msg);
     void publish_all_servo_data();
-    void setup_port();
+    //void setup_port();
     void setup_dynamixel(uint8_t dxl_id);
-    double pos_int2rad(uint32_t position_ticks); // return the rad position with gear ratio and direction
-    double vel_int2rad(uint32_t velocity_ticks);
+    double pos_int2rad(uint8_t id, uint32_t position_ticks); // return the rad position with gear ratio and direction
+    uint32_t pos_rad2int(uint8_t id, double position_rads);
+    double vel_int2rad(uint8_t id, uint32_t velocity_ticks);
     double cur_int2amp(uint32_t current_ticks);
 
     void get_present_positions();
@@ -127,14 +129,16 @@ private:
     void get_present_currents();
     void get_present_pwms();
 
+    void set_home_position_at_current_position();
+    void enable_torque(int8_t torque_enable);
+
     void check_parameter_sizes(size_t num_servos) const;
 
     // Data
     rclcpp::TimerBase::SharedPtr timer_;
-    dynamixel::PortHandler *portHandler;
-    dynamixel::PacketHandler *packetHandler;
 
     std::vector<uint8_t> ids_;
+    std::unordered_map<int, size_t> id2index_; 
     int num_servos_;
     std::vector<ServoData> servodata_;
 
