@@ -21,7 +21,7 @@ def generate_launch_description():
     param_file = os.path.join(get_package_share_directory('dxl_driver'), 'config', 'example_dxl_config.yaml')
     servo_driver = Node(
         package="dxl_driver",
-        executable="dxl_driver",
+        executable="dxl_driver_node",
         name="dxl_driver",
         output="screen",
         parameters=[param_file],

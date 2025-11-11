@@ -12,17 +12,25 @@ endif()
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_python REQUIRED)
 find_package(dynamixel_sdk REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(rclpy REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
+# Add service
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/SetHomePositions.srv"
+  "srv/SetTorqueEnable.srv"
+)
 include_directories(include)
 
 # Build
-add_executable(dxl_driver src/dxl_driver.cpp)
-ament_target_dependencies(dxl_driver
+add_executable(dxl_driver_node src/dxl_driver.cpp)
+target_include_directories(dxl_driver_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/dxl_driver>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(dxl_driver_node
   rclcpp
   dynamixel_sdk
   sensor_msgs
@@ -30,21 +38,21 @@ ament_target_dependencies(dxl_driver
 
 # Install
 install(TARGETS
-  dxl_driver
+  dxl_driver_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(DIRECTORY
+  launch 
+  config
+  DESTINATION share/${PROJECT_NAME}/
+)
+rosidl_get_typesupport_target(cpp_typesupport_target
+  ${PROJECT_NAME} rosidl_typesupport_cpp)
 
-# Test
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # uncomment the line when a copyright and license is not present in all source files
-  #set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # uncomment the line when this package is not in a git repo
-  #set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
-endif()
+target_link_libraries(dxl_driver_node
+  ${cpp_typesupport_target})
+
+ament_export_dependencies(rosidl_default_runtime)
 
 ament_package()

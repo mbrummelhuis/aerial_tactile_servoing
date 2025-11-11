@@ -1,29 +1,13 @@
-// Copyright 2021 ROBOTIS CO., LTD.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-#ifndef READ_WRITE_NODE_HPP_
-#define READ_WRITE_NODE_HPP_
-
-#include <cstdio>
-#include <memory>
-#include <string>
+#ifndef DXL_DRIVER_NODE_HPP_
+#define DXL_DRIVER_NODE_HPP_
 
 #include "rclcpp/rclcpp.hpp"
-#include "rcutils/cmdline_parser.h"
 #include "dynamixel_sdk/dynamixel_sdk.h"
 
 #include <sensor_msgs/msg/joint_state.hpp>
+
+#include <dxl_driver/srv/set_torque_enable.hpp>
+#include <dxl_driver/srv/set_home_positions.hpp>
 
 #define TICKS_PER_ROTATION 4096                 // rad = output/TICKS_PER_ROTATION*2pi
 #define MA_PER_TICK 2.69                        // mA = output * MA_PER_TICK
@@ -82,11 +66,13 @@ struct ServoData
 {
     uint8_t id;
     double gear_ratio;
-    double max_velocity; // In ticks/s
+    double max_velocity; // In rad/s
     int direction;
     DXLMode operating_mode;
-    float goal_position; // In ticks
-    float goal_velocity; // In ticks/s
+    double min_angle; // In rad
+    double max_angle; // In rad
+    double goal_position; // In rad
+    double goal_velocity; // In rad/s
     double present_position;
     double present_velocity;
     double present_current;
@@ -104,9 +90,16 @@ public:
                 dynamixel::GroupSyncWrite *positionWriter, dynamixel::GroupSyncWrite *velocityWriter);
     virtual ~DXLDriver();
 
+    void srv_set_torque_enable_callback(const std::shared_ptr<dxl_driver::srv::SetTorqueEnable::Request> request,
+                                        std::shared_ptr<dxl_driver::srv::SetTorqueEnable::Response> response);
+    void srv_set_home_positions_callback(const std::shared_ptr<dxl_driver::srv::SetHomePositions::Request> request,
+                                        std::shared_ptr<dxl_driver::srv::SetHomePositions::Response> response);
+
 private:
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_servo_reference;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_servo_state;
+    rclcpp::Service<dxl_driver::srv::SetTorqueEnable>::SharedPtr set_torque_enable_srv_;
+    rclcpp::Service<dxl_driver::srv::SetHomePositions>::SharedPtr set_home_positions_srv_;
 
     dynamixel::GroupSyncRead *gsrPosition;
     dynamixel::GroupSyncRead *gsrVelocity;
@@ -118,8 +111,8 @@ private:
 
     /// @brief Callback for the timer, execute interface loop
     void loop();
-    void set_all_position_references();
-    void get_all_servo_data();
+    void write_goal_positions();
+    void read_all_servo_data();
     void servo_reference_callback(const sensor_msgs::msg::JointState::SharedPtr msg);
     void publish_all_servo_data();
     //void setup_port();
@@ -130,15 +123,15 @@ private:
     uint32_t vel_rad2int(uint8_t id, double velocity_rads); 
     double cur_int2amp(uint16_t current_ticks);
 
-    void get_present_positions();
-    void get_present_velocities();
-    void get_present_currents();
-    void get_present_pwms();
+    void read_present_positions();
+    void read_present_velocities();
+    void read_present_currents();
+    void read_present_pwms();
 
     void write_max_velocities();
 
-    void set_home_position_at_current_position();
-    void write_torque_enable(int8_t torque_enable);
+    bool write_home_position_at_current_position();
+    bool write_torque_enable(int8_t torque_enable);
 
     void check_parameter_sizes(size_t num_servos) const;
 
@@ -153,4 +146,4 @@ private:
 
 };
 
-#endif  // READ_WRITE_NODE_HPP_
+#endif  // DXL_DRIVER_NODE_HPP_

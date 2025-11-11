@@ -1,39 +1,3 @@
-// Copyright 2021 ROBOTIS CO., LTD.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-/*******************************************************************************
-// This example is written for DYNAMIXEL X(excluding XL-320) and MX(2.0) series with U2D2.
-// For other series, please refer to the product eManual and modify the Control Table addresses and other definitions.
-// To test this example, please follow the commands below.
-//
-// Open terminal #1
-// $ ros2 run dynamixel_sdk_examples dxl_driver
-//
-// Open terminal #2 (run one of below commands at a time)
-// $ ros2 topic pub -1 /set_position dynamixel_sdk_custom_interfaces/SetPosition "{id: 1, position: 1000}"
-// $ ros2 service call /get_position dynamixel_sdk_custom_interfaces/srv/GetPosition "id: 1"
-//
-// Author: Will Son
-*******************************************************************************/
-
-#include <cstdio>
-#include <memory>
-#include <string>
-
-#include "rclcpp/rclcpp.hpp"
-#include "rcutils/cmdline_parser.h"
-
 #include "dxl_driver.hpp"
 
 dynamixel::PortHandler * portHandler;
@@ -43,7 +7,6 @@ dynamixel::PacketHandler * packetHandler;
 // dynamixel::GroupSyncRead *gsrVelocity;
 // dynamixel::GroupSyncRead *gsrCurrent;
 // dynamixel::GroupSyncRead *gsrPWM;
-
 
 uint8_t dxl_error = 0;
 uint32_t goal_position = 0;
@@ -64,13 +27,14 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
 
     // Declare all parameters
     this->declare_parameter("driver.frequency", 1.);
-    // Servo parameters
     this->declare_parameter("servos.ids", std::vector<int>{1});
     this->declare_parameter("servos.operating_modes", std::vector<int>{4});
     this->declare_parameter("servos.homing_modes", std::vector<int>{0});
     this->declare_parameter("servos.directions", std::vector<int>{1});
     this->declare_parameter("servos.max_speeds", std::vector<double>{0.1});
     this->declare_parameter("servos.gear_ratios", std::vector<double>{1.0});
+    this->declare_parameter("servos.min_angles", std::vector<double>(0.0));
+    this->declare_parameter("servos.max_angles", std::vector<double>(0.0));
 
     // Generate uint8_t vector of ids
     std::vector<long> int_ids = this->get_parameter("servos.ids").as_integer_array();
@@ -79,35 +43,32 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
                     [](int val) { return static_cast<uint8_t>(val); });
     num_servos_ = static_cast<int>(int_ids.size());
     check_parameter_sizes(num_servos_); // Check if param sizes match
+
+    // Assign the servo settings
     std::vector<int64_t> operating_modes = this->get_parameter("servos.operating_modes").as_integer_array();
     std::vector<int64_t> directions = this->get_parameter("servos.directions").as_integer_array();
     std::vector<double> gear_ratios = this->get_parameter("servos.gear_ratios").as_double_array();
     std::vector<int64_t> homing_modes = this->get_parameter("servos.homing_modes").as_integer_array();
     std::vector<double> max_speeds = this->get_parameter("servos.max_speeds").as_double_array();
+    std::vector<double> min_angles = this->get_parameter("servos.min_angles").as_double_array();
+    std::vector<double> max_angles = this->get_parameter("servos.max_angles").as_double_array();
+
     for (int i = 0; i < num_servos_; i++)
     {
         id2index_[ids_[i]] = i;
 
         ServoData current_servo_data;
-
         current_servo_data.operating_mode = static_cast<DXLMode>(operating_modes[i]);
         current_servo_data.direction = static_cast<int>(directions[i]);
         current_servo_data.gear_ratio = gear_ratios[i];
-        current_servo_data.goal_position = current_servo_data.present_position;
-        current_servo_data.goal_velocity = current_servo_data.present_velocity;
+        current_servo_data.min_angle = min_angles[i];
+        current_servo_data.max_angle = max_angles[i];
+        current_servo_data.goal_position = 0.0;
+        current_servo_data.goal_velocity = 0.0;
         current_servo_data.max_velocity = max_speeds[i];
-        write_max_velocities();
-        if (homing_modes[i] == 0) // Don't update homing
-        {
-
-        }
-        else if (homing_modes[i] == 1) // Set current
-        {
-
-        }
-        // ...
-        // Assign servo settings here
         servodata_.push_back(current_servo_data);
+
+        write_max_velocities(); // Does nothing in position mode
 
         int dxl_addparam_result = false;
         dxl_addparam_result = gsrPosition->addParam(ids_[i]);
@@ -116,7 +77,7 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
         }
         dxl_addparam_result = gsrVelocity->addParam(ids_[i]);
         if (dxl_addparam_result != true) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncRead Velocit for Dynamixel ID %d", servodata_[i].id);
+            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncRead Velocity for Dynamixel ID %d", servodata_[i].id);
         }
         dxl_addparam_result = gsrCurrent->addParam(ids_[i]);
         if (dxl_addparam_result != true) {
@@ -134,15 +95,34 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
       "/servo/in/state", 10, 
       std::bind(&DXLDriver::servo_reference_callback, this, std::placeholders::_1));
     pub_servo_state = this->create_publisher<sensor_msgs::msg::JointState>("/servo/out/state", 10);
+
+    set_torque_enable_srv_ = this->create_service<dxl_driver::srv::SetTorqueEnable>(
+        "/set_torque_enable", std::bind(&DXLDriver::srv_set_torque_enable_callback,
+                this, std::placeholders::_1, std::placeholders::_2));
+    set_home_positions_srv_ = this->create_service<dxl_driver::srv::SetHomePositions>(
+        "/set_home_positions", std::bind(&DXLDriver::srv_set_home_positions_callback,
+                this, std::placeholders::_1, std::placeholders::_2));
     RCLCPP_INFO(this->get_logger(), "Succeeded creating ROS2 interfaces");
 
     // Read current positions and set as reference
-    get_all_servo_data();
-    
+    read_all_servo_data();
+    for (int i = 0; i < num_servos_; i++)
+    {
+        if ((servodata_[i].min_angle == 0.0 && servodata_[i].max_angle == 0.0) && 
+            (servodata_[i].present_position < servodata_[i].min_angle || servodata_[i].present_position > servodata_[i].max_angle))
+        {
+            RCLCPP_ERROR(this->get_logger(), "Present position %.3f out of position limits (MIN: %.3f, MAX: %.3f). Exiting.", 
+                servodata_[i].present_position,
+                servodata_[i].min_angle,
+                servodata_[i].max_angle);
+            exit(-13);
+        }
+        servodata_[i].goal_position = servodata_[i].present_position;
+        servodata_[i].goal_velocity = servodata_[i].present_velocity;
+    }
 
     // Set up the servos and engage torque
-    setup_dynamixel(BROADCAST_ID); // 
-    RCLCPP_INFO(this->get_logger(), "Succeeded Configuring driver");
+    setup_dynamixel(BROADCAST_ID); 
 
     // Timer for publishing servo state
     double node_frequency_ = this->get_parameter("driver.frequency").as_double();
@@ -163,19 +143,20 @@ DXLDriver::~DXLDriver()
 
 void DXLDriver::loop()
 {
-    set_all_position_references(); // set servo references on servo
-    get_all_servo_data(); // get data from the servos
+    write_goal_positions(); // set servo references on servo
+    read_all_servo_data(); // get data from the servos
     publish_all_servo_data(); // publish data to ROS topic
 }
 
-void DXLDriver::set_all_position_references()
+void DXLDriver::write_goal_positions()
 {
     for(int i = 0; i<num_servos_; i++)
     {
         int dxl_addparam_result = false;
         uint8_t param_goal_position[4];
-        int32_t goal_pos_ticks = pos_rad2int(servodata_[i].id, servodata_[i].goal_position);
-        RCLCPP_INFO(this->get_logger(), "goal position %f", servodata_[i].goal_position);
+        double goal_position = std::clamp(servodata_[i].goal_position, servodata_[i].min_angle, servodata_[i].max_angle);
+        int32_t goal_pos_ticks = pos_rad2int(servodata_[i].id, goal_position);
+        RCLCPP_INFO(this->get_logger(), "goal position %f", goal_position);
         RCLCPP_INFO(this->get_logger(), "goal position ticks %i", goal_pos_ticks);
 
         param_goal_position[0] = DXL_LOBYTE(DXL_LOWORD(goal_pos_ticks));
@@ -183,8 +164,12 @@ void DXLDriver::set_all_position_references()
         param_goal_position[2] = DXL_LOBYTE(DXL_HIWORD(goal_pos_ticks));
         param_goal_position[3] = DXL_HIBYTE(DXL_HIWORD(goal_pos_ticks));
         dxl_addparam_result = gswPosition->addParam(ids_[i], param_goal_position);
-        if (dxl_addparam_result != true) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to addparam to groupSyncWrite for Dynamixel ID %d with error code %i", servodata_[i].id, dxl_addparam_result);
+        if (dxl_addparam_result != true) 
+        {
+            RCLCPP_ERROR(this->get_logger(), "[ID: %d] Failed to addparam to groupSyncWrite with error code %d", 
+                servodata_[i].id, 
+                dxl_addparam_result
+                );
         }
     }
 
@@ -197,12 +182,12 @@ void DXLDriver::set_all_position_references()
     gswPosition->clearParam(); 
 }
 
-void DXLDriver::get_all_servo_data()
+void DXLDriver::read_all_servo_data()
 {
-    get_present_positions();
-    get_present_velocities();
-    get_present_currents();
-    get_present_pwms();
+    read_present_positions();
+    read_present_velocities();
+    read_present_currents();
+    read_present_pwms();
 }
 
 void DXLDriver::publish_all_servo_data()
@@ -228,7 +213,7 @@ void DXLDriver::publish_all_servo_data()
     this->pub_servo_state->publish(servo_state_msg);
 }
 
-void DXLDriver::get_present_positions()
+void DXLDriver::read_present_positions()
 {
     dxl_comm_result = gsrPosition->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
@@ -238,10 +223,13 @@ void DXLDriver::get_present_positions()
             servodata_[i].present_position = pos_int2rad(servodata_[i].id, gsrPosition->getData(ids_[i], DXLREGISTER::PRESENT_POSITION, 4));
         }
     }
-    gsrPosition->clearParam();
+    else
+    {
+        RCLCPP_ERROR(this->get_logger(), "Failed to get present positions with GroupSyncRead");
+    }
 }
 
-void DXLDriver::get_present_velocities()
+void DXLDriver::read_present_velocities()
 {
     dxl_comm_result = gsrVelocity->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
@@ -251,10 +239,13 @@ void DXLDriver::get_present_velocities()
             servodata_[i].present_velocity = vel_int2rad(servodata_[i].id, gsrVelocity->getData(ids_[i], DXLREGISTER::PRESENT_VELOCITY, 4));
         }
     }
-    gsrVelocity->clearParam();
+    else
+    {
+        RCLCPP_ERROR(this->get_logger(), "Failed to get present velocities with GroupSyncRead");
+    }
 }
 
-void DXLDriver::get_present_currents()
+void DXLDriver::read_present_currents()
 {
     dxl_comm_result = gsrCurrent->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
@@ -264,10 +255,13 @@ void DXLDriver::get_present_currents()
             servodata_[i].present_current = cur_int2amp(gsrCurrent->getData(ids_[i], DXLREGISTER::PRESENT_CURRENT, 4));
         }
     }
-    gsrCurrent->clearParam();
+    else
+    {
+        RCLCPP_ERROR(this->get_logger(), "Failed to get present currents with GroupSyncRead");
+    }
 }
 
-void DXLDriver::get_present_pwms()
+void DXLDriver::read_present_pwms()
 {
     dxl_comm_result = gsrPWM->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
@@ -276,6 +270,10 @@ void DXLDriver::get_present_pwms()
         {
             servodata_[i].present_pwm = gsrPWM->getData(ids_[i], DXLREGISTER::PRESENT_PWM, 4);
         }
+    }
+    else
+    {
+        RCLCPP_ERROR(this->get_logger(), "Failed to get present positions with GroupSyncRead");
     }
 }
 
@@ -287,28 +285,30 @@ void DXLDriver::write_max_velocities()
         dxl_comm_result = packetHandler->write4ByteTxRx(
             portHandler,
             servodata_[i].id,
-            DXLREGISTER::TORQUE_ENABLE,
+            DXLREGISTER::VELOCITY_LIMIT,
             vel_rad2int(servodata_[i].id, servodata_[i].max_velocity),
             &dxl_error
         );
         if (dxl_comm_result == COMM_SUCCESS)
         {
             RCLCPP_INFO(this->get_logger(), "[ID: %i] Set max velocity %f rad/s | %d ticks", 
-                servodata_[i].id, 
+                static_cast<int>(servodata_[i].id), 
                 servodata_[i].max_velocity, 
                 vel_rad2int(servodata_[i].id, servodata_[i].max_velocity));
         }
         else
         {
-            RCLCPP_INFO(this->get_logger(), "[ID: %i] Failed to set max velocity, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+            RCLCPP_ERROR(this->get_logger(), "[ID: %i] Failed to set max velocity, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
         }
     }
 }
-void DXLDriver::set_home_position_at_current_position()
+bool DXLDriver::write_home_position_at_current_position()
 {
+    RCLCPP_INFO(this->get_logger(), "Writing home position at the current position");
     // Update servo current positions
     int32_t homing_offset;
-    get_present_positions();
+    bool success = true;
+    read_present_positions();
 
     for (int i = 0; i < num_servos_; i++)
     {
@@ -340,12 +340,15 @@ void DXLDriver::set_home_position_at_current_position()
         else
         {
             RCLCPP_INFO(this->get_logger(), "[ID: %i] Failed to set homing offset, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+            success = false;
         }
     }
+    return success;
 }
 
-void DXLDriver::write_torque_enable(int8_t torque_enable)
+bool DXLDriver::write_torque_enable(int8_t torque_enable)
 {
+    bool success = true;
     for (int i = 0; i < num_servos_; i++)
     {
         // Enable Torque of DYNAMIXEL
@@ -363,8 +366,10 @@ void DXLDriver::write_torque_enable(int8_t torque_enable)
         else
         {
             RCLCPP_INFO(this->get_logger(), "[ID: %i] Failed to set torque enable, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+            success = false;
         }
     }
+    return success;
 }
 
 double DXLDriver::pos_int2rad(uint8_t id, uint32_t position_ticks)
@@ -404,6 +409,27 @@ void DXLDriver::servo_reference_callback(const sensor_msgs::msg::JointState::Sha
     }
 }
 
+void DXLDriver::srv_set_torque_enable_callback(
+    const std::shared_ptr<dxl_driver::srv::SetTorqueEnable::Request> request,
+    std::shared_ptr<dxl_driver::srv::SetTorqueEnable::Response> response)
+{
+    bool success;
+    success = write_torque_enable(request->enable_torque);
+    response->success = success;
+}
+
+void DXLDriver::srv_set_home_positions_callback(
+    const std::shared_ptr<dxl_driver::srv::SetHomePositions::Request> request,
+    std::shared_ptr<dxl_driver::srv::SetHomePositions::Response> response)
+{
+    if (request->write_home_position)
+    {
+        bool success;
+        success = write_home_position_at_current_position();
+        response->success = success;
+    }
+}
+
 void DXLDriver::setup_dynamixel(uint8_t dxl_id)
 {
     // Use Position Control Mode
@@ -414,7 +440,6 @@ void DXLDriver::setup_dynamixel(uint8_t dxl_id)
         4,
         &dxl_error
     );
-    RCLCPP_INFO(this->get_logger(), "Error %i", dxl_error);
 
     if (dxl_comm_result != COMM_SUCCESS) {
         RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "Failed to set Position Control Mode.");
@@ -463,6 +488,16 @@ void DXLDriver::check_parameter_sizes(size_t num_servos) const
     if (this->get_parameter("servos.gear_ratios").as_double_array().size() != num_servos)
     {
         RCLCPP_ERROR(this->get_logger(), "servos.gear_ratios not the same size as number of servos!");
+        exit(-1);
+    }
+    if (this->get_parameter("servos.min_angles").as_double_array().size() != num_servos)
+    {
+        RCLCPP_ERROR(this->get_logger(), "servos.min_angles not the same size as number of servos!");
+        exit(-1);
+    }
+    if (this->get_parameter("servos.max_angles").as_double_array().size() != num_servos)
+    {
+        RCLCPP_ERROR(this->get_logger(), "servos.max_angles not the same size as number of servos!");
         exit(-1);
     }
 }
