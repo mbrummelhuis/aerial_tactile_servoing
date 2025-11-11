@@ -71,7 +71,6 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
     this->declare_parameter("servos.directions", std::vector<int>{1});
     this->declare_parameter("servos.max_speeds", std::vector<double>{0.1});
     this->declare_parameter("servos.gear_ratios", std::vector<double>{1.0});
-    this->declare_parameter("servos.start_offsets", std::vector<double>{0.0});
 
     // Generate uint8_t vector of ids
     std::vector<long> int_ids = this->get_parameter("servos.ids").as_integer_array();
@@ -96,6 +95,8 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
         current_servo_data.gear_ratio = gear_ratios[i];
         current_servo_data.goal_position = current_servo_data.present_position;
         current_servo_data.goal_velocity = current_servo_data.present_velocity;
+        current_servo_data.max_velocity = max_speeds[i];
+        write_max_velocities();
         if (homing_modes[i] == 0) // Don't update homing
         {
 
@@ -278,6 +279,31 @@ void DXLDriver::get_present_pwms()
     }
 }
 
+void DXLDriver::write_max_velocities()
+{
+    for (int i = 0; i < num_servos_; i++)
+    {
+        // Enable Torque of DYNAMIXEL
+        dxl_comm_result = packetHandler->write4ByteTxRx(
+            portHandler,
+            servodata_[i].id,
+            DXLREGISTER::TORQUE_ENABLE,
+            vel_rad2int(servodata_[i].id, servodata_[i].max_velocity),
+            &dxl_error
+        );
+        if (dxl_comm_result == COMM_SUCCESS)
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Set max velocity %f rad/s | %d ticks", 
+                servodata_[i].id, 
+                servodata_[i].max_velocity, 
+                vel_rad2int(servodata_[i].id, servodata_[i].max_velocity));
+        }
+        else
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Failed to set max velocity, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+        }
+    }
+}
 void DXLDriver::set_home_position_at_current_position()
 {
     // Update servo current positions
@@ -318,7 +344,7 @@ void DXLDriver::set_home_position_at_current_position()
     }
 }
 
-void DXLDriver::enable_torque(int8_t torque_enable)
+void DXLDriver::write_torque_enable(int8_t torque_enable)
 {
     for (int i = 0; i < num_servos_; i++)
     {
@@ -348,19 +374,26 @@ double DXLDriver::pos_int2rad(uint8_t id, uint32_t position_ticks)
     return position_rads;
 }
 
-uint32_t DXLDriver::pos_rad2int(uint8_t id, double position_rads)
+int32_t DXLDriver::pos_rad2int(uint8_t id, double position_rads)
 {
-    return static_cast<uint32_t>(position_rads);
+    int i = id2index_[id];
+    int32_t position_ticks = static_cast<int32_t>(servodata_[i].direction) * static_cast<int32_t>(position_rads / servodata_[i].gear_ratio* 4096);
+    return position_ticks;
 }
 
 double DXLDriver::vel_int2rad(uint8_t id, uint32_t velocity_ticks)
 {
-    return static_cast<double>(velocity_ticks);
+    return static_cast<double>(velocity_ticks * RAD_PER_SECOND_PER_TICK / servodata_[id2index_[id]].gear_ratio);
 }
 
-double DXLDriver::cur_int2amp(uint32_t current_ticks)
+uint32_t DXLDriver::vel_rad2int(uint8_t id, double velocity_rads)
 {
-    return static_cast<double>(current_ticks);
+    return static_cast<uint32_t>(velocity_rads / RAD_PER_SECOND_PER_TICK * servodata_[id2index_[id]].gear_ratio);
+}
+
+double DXLDriver::cur_int2amp(uint16_t current_ticks)
+{
+    return static_cast<double>(current_ticks*MA_PER_TICK);
 }
 
 void DXLDriver::servo_reference_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
@@ -430,11 +463,6 @@ void DXLDriver::check_parameter_sizes(size_t num_servos) const
     if (this->get_parameter("servos.gear_ratios").as_double_array().size() != num_servos)
     {
         RCLCPP_ERROR(this->get_logger(), "servos.gear_ratios not the same size as number of servos!");
-        exit(-1);
-    }
-    if (this->get_parameter("servos.start_offsets").as_double_array().size() != num_servos)
-    {
-        RCLCPP_ERROR(this->get_logger(), "servos.start_offsets not the same size as number of servos!");
         exit(-1);
     }
 }

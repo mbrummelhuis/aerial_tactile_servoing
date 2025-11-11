@@ -25,6 +25,11 @@
 
 #include <sensor_msgs/msg/joint_state.hpp>
 
+#define TICKS_PER_ROTATION 4096                 // rad = output/TICKS_PER_ROTATION*2pi
+#define MA_PER_TICK 2.69                        // mA = output * MA_PER_TICK
+#define RAD_PER_SECOND_PER_TICK 0.023968667     // vel_rad/s = output * RAD_PER_SECOND_PER_TICK
+
+
 #define DEVICE_NAME "/dev/ttyUSB0"
 #define BAUDRATE 57600
 #define PROTOCOL_VERSION 2.0
@@ -120,17 +125,20 @@ private:
     //void setup_port();
     void setup_dynamixel(uint8_t dxl_id);
     double pos_int2rad(uint8_t id, uint32_t position_ticks); // return the rad position with gear ratio and direction
-    uint32_t pos_rad2int(uint8_t id, double position_rads);
+    int32_t pos_rad2int(uint8_t id, double position_rads);
     double vel_int2rad(uint8_t id, uint32_t velocity_ticks);
-    double cur_int2amp(uint32_t current_ticks);
+    uint32_t vel_rad2int(uint8_t id, double velocity_rads); 
+    double cur_int2amp(uint16_t current_ticks);
 
     void get_present_positions();
     void get_present_velocities();
     void get_present_currents();
     void get_present_pwms();
 
+    void write_max_velocities();
+
     void set_home_position_at_current_position();
-    void enable_torque(int8_t torque_enable);
+    void write_torque_enable(int8_t torque_enable);
 
     void check_parameter_sizes(size_t num_servos) const;
 

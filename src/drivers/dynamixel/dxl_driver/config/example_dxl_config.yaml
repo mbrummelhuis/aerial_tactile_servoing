@@ -1,17 +1,13 @@
-/dxl_implementation:
+/dxl_driver:
   ros__parameters:
     driver:
-      port_name: "/dev/ttyUSB0"
-      baud_rate: 115200
-      frequency: 50.0
-      protocol_version: 2.0
+      frequency: 1.0
 
     servos:
-      ids: [33] # Servo IDs
+      ids: [1] # Servo IDs
       operating_modes: [4] # Driver operating mode, [4 is position control]
       homing_modes: [0] # Homing mode, [0 is zero position at startup]
-      directions: [-1] # Direction of rotation for each servo [-1, 1]
+      directions: [1] # Direction of rotation for each servo [-1, 1]
       max_speeds: [1.2] # Maximum allowable speed in rad/s
       max_currents: [100.] # Maximum allowable current in mA [ENFORCEMENT NOT IMPLEMENTED]
       gear_ratios: [3.0] # Gear ratio between servo horn and output shaft
-      start_offsets: [1.9] # Offset from the zero position on startup in radians
