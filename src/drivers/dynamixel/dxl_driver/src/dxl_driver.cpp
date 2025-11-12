@@ -1,3 +1,5 @@
+#include <math.h>
+
 #include "dxl_driver.hpp"
 
 dynamixel::PortHandler * portHandler;
@@ -108,7 +110,7 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
     read_all_servo_data();
     for (int i = 0; i < num_servos_; i++)
     {
-        if ((servodata_[i].min_angle == 0.0 && servodata_[i].max_angle == 0.0) && 
+        if ((!(servodata_[i].min_angle == 0.0 && servodata_[i].max_angle == 0.0)) && 
             (servodata_[i].present_position < servodata_[i].min_angle || servodata_[i].present_position > servodata_[i].max_angle))
         {
             RCLCPP_ERROR(this->get_logger(), "Present position %.3f out of position limits (MIN: %.3f, MAX: %.3f). Exiting.", 
@@ -119,6 +121,7 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
         }
         servodata_[i].goal_position = servodata_[i].present_position;
         servodata_[i].goal_velocity = servodata_[i].present_velocity;
+        RCLCPP_INFO(this->get_logger(), "Present position %.3f, goal position %.3f", servodata_[i].present_position, servodata_[i].goal_position);
     }
 
     // Set up the servos and engage torque
@@ -154,7 +157,15 @@ void DXLDriver::write_goal_positions()
     {
         int dxl_addparam_result = false;
         uint8_t param_goal_position[4];
-        double goal_position = std::clamp(servodata_[i].goal_position, servodata_[i].min_angle, servodata_[i].max_angle);
+        double goal_position;
+        if (!(servodata_[i].min_angle == 0.0 && servodata_[i].max_angle == 0.0))
+        {
+            goal_position = std::clamp(servodata_[i].goal_position, servodata_[i].min_angle, servodata_[i].max_angle);
+        }
+        else
+        {
+            goal_position = servodata_[i].goal_position;
+        }
         int32_t goal_pos_ticks = pos_rad2int(servodata_[i].id, goal_position);
         RCLCPP_INFO(this->get_logger(), "goal position %f", goal_position);
         RCLCPP_INFO(this->get_logger(), "goal position ticks %i", goal_pos_ticks);
@@ -220,7 +231,9 @@ void DXLDriver::read_present_positions()
     {
         for (int i=0; i<num_servos_; i++)
         {
-            servodata_[i].present_position = pos_int2rad(servodata_[i].id, gsrPosition->getData(ids_[i], DXLREGISTER::PRESENT_POSITION, 4));
+            int32_t present_position_ticks = gsrPosition->getData(ids_[i], DXLREGISTER::PRESENT_POSITION, 4);
+            servodata_[i].present_position = pos_int2rad(servodata_[i].id, present_position_ticks);
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Present position ticks %d, present position rads %.3f", servodata_[i].id, present_position_ticks, servodata_[i].present_position);
         }
     }
     else
@@ -304,7 +317,7 @@ void DXLDriver::write_max_velocities()
 }
 bool DXLDriver::write_home_position_at_current_position()
 {
-    RCLCPP_INFO(this->get_logger(), "Writing home position at the current position");
+    RCLCPP_INFO(this->get_logger(), "[SERVICE] Writing home position at the current position");
     // Update servo current positions
     int32_t homing_offset;
     bool success = true;
@@ -322,10 +335,15 @@ bool DXLDriver::write_home_position_at_current_position()
         );
         if (dxl_comm_result!=COMM_SUCCESS)
         {
-            RCLCPP_INFO(this->get_logger(), "[ID: %i] Read error, comm result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+            RCLCPP_ERROR(this->get_logger(), "[ID: %i] Read error, comm result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+            return false; // Exit if cannot read the current homing offset
+        }
+        else{
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Current home position was %d", servodata_[i].id, homing_offset);
         }
         // Update homing offset with current position
-        int32_t new_homing_offset = pos_rad2int(servodata_[i].id, servodata_[i].present_position) - homing_offset;
+        RCLCPP_INFO(this->get_logger(), "[ID: %i] Present position ticks %d", servodata_[i].id, pos_rad2int(servodata_[i].id, servodata_[i].present_position));
+        int32_t new_homing_offset = -(pos_rad2int(servodata_[i].id, servodata_[i].present_position) - homing_offset);
         dxl_comm_result = packetHandler->write4ByteTxRx(
             portHandler,
             servodata_[i].id,
@@ -335,7 +353,8 @@ bool DXLDriver::write_home_position_at_current_position()
         );
         if (dxl_comm_result == COMM_SUCCESS)
         {
-            RCLCPP_INFO(this->get_logger(), "[ID: %i] Set homing offset to %d", servodata_[i].id, new_homing_offset);
+            servodata_[i].present_position = 0.0;
+            servodata_[i].goal_position = 0.0;
         }
         else
         {
@@ -372,17 +391,17 @@ bool DXLDriver::write_torque_enable(int8_t torque_enable)
     return success;
 }
 
-double DXLDriver::pos_int2rad(uint8_t id, uint32_t position_ticks)
+double DXLDriver::pos_int2rad(uint8_t id, int32_t position_ticks)
 {
     int i = id2index_[id];
-    double position_rads = static_cast<double>(servodata_[i].direction) * static_cast<double>(position_ticks) * servodata_[i].gear_ratio / 4096.;
+    double position_rads = static_cast<double>(servodata_[i].direction) * static_cast<double>(position_ticks) / servodata_[i].gear_ratio / 4096.f * 2.f * M_PI;
     return position_rads;
 }
 
 int32_t DXLDriver::pos_rad2int(uint8_t id, double position_rads)
 {
     int i = id2index_[id];
-    int32_t position_ticks = static_cast<int32_t>(servodata_[i].direction) * static_cast<int32_t>(position_rads / servodata_[i].gear_ratio* 4096);
+    int32_t position_ticks = static_cast<int32_t>(servodata_[i].direction) * static_cast<int32_t>(position_rads * servodata_[i].gear_ratio * 4096 / (2.f*M_PI));
     return position_ticks;
 }
 
@@ -507,6 +526,7 @@ void setup_port()
     dxl_comm_result = portHandler->openPort();
     if (dxl_comm_result == false) {
         RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "Failed to open the port!");
+        exit(-12);
     } else {
         RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "Succeeded to open the port.");
     }

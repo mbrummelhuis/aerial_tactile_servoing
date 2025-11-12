@@ -117,7 +117,7 @@ private:
     void publish_all_servo_data();
     //void setup_port();
     void setup_dynamixel(uint8_t dxl_id);
-    double pos_int2rad(uint8_t id, uint32_t position_ticks); // return the rad position with gear ratio and direction
+    double pos_int2rad(uint8_t id, int32_t position_ticks); // return the rad position with gear ratio and direction
     int32_t pos_rad2int(uint8_t id, double position_rads);
     double vel_int2rad(uint8_t id, uint32_t velocity_ticks);
     uint32_t vel_rad2int(uint8_t id, double velocity_rads); 

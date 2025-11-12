@@ -9,6 +9,6 @@
       homing_modes: [0] # Homing mode, [0 is no homing]
       directions: [1] # Direction of rotation for each servo [-1, 1]
       max_speeds: [0.1] # Maximum allowable speed in rad/s
-      gear_ratios: [3.0] # Gear ratio between servo horn and output shaft
-      min_angles: [-1.57] # Minimum angle limit in rad (if both set to zero, no limits are applied)
-      max_angles: [1.57] # Maximum angle limit in rad (if both set to zero, no limits are applied)
+      gear_ratios: [4.0] # Gear ratio between servo horn and output shaft
+      min_angles: [0.1] # Minimum angle limit in rad (if both set to zero, no limits are applied)
+      max_angles: [0.1] # Maximum angle limit in rad (if both set to zero, no limits are applied)
