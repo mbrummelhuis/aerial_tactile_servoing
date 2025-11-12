@@ -3,15 +3,41 @@ from rclpy.node import Node
 from math import pi
 import time
 import os
+import math
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
 
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import TwistStamped, TransformStamped
 from std_msgs.msg import Float64, Int8
+from tf2_ros import TransformBroadcaster
 
 from .tactip import TacTip
 
 from .dependencies.label_encoder import BASE_MODEL_PATH
+
+
+def quaternion_from_euler(ai, aj, ak):
+    ai /= 2.0
+    aj /= 2.0
+    ak /= 2.0
+    ci = math.cos(ai)
+    si = math.sin(ai)
+    cj = math.cos(aj)
+    sj = math.sin(aj)
+    ck = math.cos(ak)
+    sk = math.sin(ak)
+    cc = ci*ck
+    cs = ci*sk
+    sc = si*ck
+    ss = si*sk
+
+    q = np.empty((4, ))
+    q[0] = cj*sc - sj*cs
+    q[1] = cj*ss + sj*cc
+    q[2] = cj*cs - sj*sc
+    q[3] = cj*cc + sj*ss
+
+    return q
 
 class TactipDriver(Node):
     def __init__(self):
@@ -50,6 +76,9 @@ class TactipDriver(Node):
         self.publisher_pose_ = self.create_publisher(TwistStamped, '/tactip/pose', 10)
         self.publisher_ssim_ = self.create_publisher(Float64, '/tactip/ssim', 10)
         self.publisher_contact_ = self.create_publisher(Int8, '/tactip/contact', 10)
+
+        # Broadcaster TF
+        self.broadcaster_tf = TransformBroadcaster(self)
 
         # Run testing model evaluation time functionality if enabled in Launch
         if self.get_parameter('test_model_time').get_parameter_value().bool_value:
@@ -121,6 +150,21 @@ class TactipDriver(Node):
         msg.twist.angular.z = rot_pred_pose[5]*0.0174532925 # deg2rad
         self.publisher_pose_.publish(msg)
         #self.get_logger().info(f"Published data: {msg}")
+
+        # Broadcast the TF
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "contact_frame"
+        t.child_frame_id = "sensor_frame"
+        t.transform.translation.x = rot_pred_pose[0]/1000.
+        t.transform.translation.y = rot_pred_pose[1]/1000.
+        t.transform.translation.z = rot_pred_pose[2]/1000.
+        q = quaternion_from_euler(rot_pred_pose[3]*0.0174532925, rot_pred_pose[4]*0.0174532925, rot_pred_pose[5]*0.0174532925)
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+        self.broadcaster_tf.sendTransform(t)
 
         self.cycle_counter +=1
 

@@ -228,23 +228,23 @@ void PX4ROS2Driver::publishActuatorMotorsSetpoint()
 }
 
 void PX4ROS2Driver::publishVehicleCommand(
-  uint16_t command, 
-  float param1 = 0.0, 
-  float param2 = 0.0, 
-  float param3 = 0.0, 
-  float param4 = 0.0, 
-  float param5 = 0.0, 
-  float param6 = 0.0, 
-  float param7 = 0.0)
+    uint16_t command, 
+    float param1 = 0.0, 
+    float param2 = 0.0, 
+    float param3 = 0.0, 
+    float param4 = 0.0, 
+    float param5 = 0.0, 
+    float param6 = 0.0, 
+    float param7 = 0.0)
 {
 	VehicleCommand msg{};
 	msg.param1 = param1;
 	msg.param2 = param2;
-  msg.param3 = param3;
-  msg.param4 = param4;
-  msg.param5 = param5;
-  msg.param6 = param6;
-  msg.param7 = param7;
+    msg.param3 = param3;
+    msg.param4 = param4;
+    msg.param5 = param5;
+    msg.param6 = param6;
+    msg.param7 = param7;
 	msg.command = command;
 	msg.target_system = 1;
 	msg.target_component = 1;
@@ -258,8 +258,8 @@ void PX4ROS2Driver::publishVehicleCommand(
 
 int main(int argc, char * argv[])
 {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<PX4ROS2Driver>());
-  rclcpp::shutdown();
-  return 0;
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<PX4ROS2Driver>());
+    rclcpp::shutdown();
+    return 0;
 }

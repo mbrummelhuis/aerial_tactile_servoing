@@ -6,8 +6,9 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation as R
 
+from tf2_ros import TransformBroadcaster
 from std_msgs.msg import Int8, Int32, Float64
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import TwistStamped, TransformStamped
 from sensor_msgs.msg import JointState
 from px4_msgs.msg import VehicleOdometry, TrajectorySetpoint
 
@@ -54,6 +55,10 @@ class PoseBasedATS(Node):
 
         self.publisher_ki_error = self.create_publisher(Float64, '/controller/optimizer/ki_error', 10)
         self.publisher_regularization = self.create_publisher(Float64, '/controller/optimizer/regularization', 10)
+
+        # Broadcasters
+        self.broadcaster_body_to_sensor = TransformBroadcaster(self)
+        self.broadcaster_world_to_body = TransformBroadcaster(self)
 
         # Gains
         self.Kp = np.eye(6)
@@ -143,11 +148,28 @@ class PoseBasedATS(Node):
 
         self.publisher_drone_actual_position.publish(twistmsg)
 
+        # Broadcast the current drone pose
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "world"
+        t.child_frame_id = "body_frame"
+        t.transform.translation.x = state[0]
+        t.transform.translation.y = state[1]
+        t.transform.translation.z = state[2]
+        q = R.from_euler('xyz', [state[3], state[4], state[5]]).as_quat()
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+        self.broadcaster_world_to_body.sendTransform(t)
+
+
         # Evaluate the error
         P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x, self.tactip.twist.angular.y, self.tactip.twist.linear.z)
         E_Sref = P_SC @ self.P_Cref
-        self.publish_transform(self.P_Cref, self.publisher_reference_sensor_pose_contact)
-        self.publish_transform(E_Sref, self.publisher_error)
+
+        # self.publish_transform(self.P_Cref, self.publisher_reference_sensor_pose_contact)
+        # self.publish_transform(E_Sref, self.publisher_error)
         e_sr = self.transformation_to_vector(E_Sref)
 
         # Check for contact through SSIM
@@ -164,12 +186,28 @@ class PoseBasedATS(Node):
 
         P_C = P_S @ P_SC
         self.publish_transform(P_C, self.publisher_inertial_contact_frame_pose)
+        # Broadcast 
 
         # Publish the forward kinematics for reference
         self.publish_transform(P_S, self.publisher_forward_kinematics)
         self.publish_transform(U_SS, self.publisher_correction)
         P_Sref = P_S @ U_SS # Transform adjustment from sensor frame to inertial frame
         #P_Sref = self.forward_kinematics([0.0, 0.0, -1.5, 0.0, 0.0, 0.0, np.pi/3, 0.0, np.pi/6])
+
+        # Broadcast reference sensor pose in world
+        q = R.from_matrix(P_Sref[0:3,0:3]).as_quat()
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "world"
+        t.child_frame_id = "reference_sensor_frame"
+        t.transform.translation.x = P_Sref[0, 3]
+        t.transform.translation.y = P_Sref[1, 3]
+        t.transform.translation.z = P_Sref[2, 3]
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+        self.broadcaster_world_to_body.sendTransform(t)
 
         # Publish the corrected reference sensor pose in inertial frame in vector form
         self.publish_transform(P_Sref, self.publisher_reference_sensor_pose_inertial)
@@ -209,6 +247,21 @@ class PoseBasedATS(Node):
             # FK for checking
             check = self.forward_kinematics(state_reference)
             self.publish_transform(check, self.publisher_ik_check)
+
+            # Broadcast reference drone pose from IK
+            t = TransformStamped()
+            t.header.stamp = self.get_clock().now().to_msg()
+            t.header.frame_id = "world"
+            t.child_frame_id = "reference_body_frame"
+            t.transform.translation.x = state_reference[0]
+            t.transform.translation.y = state_reference[1]
+            t.transform.translation.z = state_reference[2]
+            q = R.from_euler('xyz', [state_reference[3], state_reference[4], state_reference[5]]).as_quat()
+            t.transform.rotation.x = q[0]
+            t.transform.rotation.y = q[1]
+            t.transform.rotation.z = q[2]
+            t.transform.rotation.w = q[3]
+            self.broadcaster_world_to_body.sendTransform(t)
 
             # Publish kinematic inversion error
             self.publish_ki_error(self.kinematic_inversion_error(state_reference, P_Sref, self.get_state()))
