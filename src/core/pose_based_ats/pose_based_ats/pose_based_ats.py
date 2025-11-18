@@ -51,11 +51,7 @@ class PoseBasedATS(Node):
         self.publisher_regularization = self.create_publisher(Float64, '/controller/optimizer/regularization', 10)
 
         # Broadcasters
-        self.broadcaster_body_to_sensor = TransformBroadcaster(self)
-        self.broadcaster_world_to_body = TransformBroadcaster(self)
-        self.broadcaster_sensor_to_corrected_sensor = TransformBroadcaster(self)
-        self.broadcaster_world_to_reference_body = TransformBroadcaster(self)
-        self.broadcaster_reference_body_to_reference_sensor = TransformBroadcaster(self)
+        self.broadcaster_tf2 = TransformBroadcaster(self)
 
         # Gains
         self.Kp = np.eye(6)
@@ -132,20 +128,9 @@ class PoseBasedATS(Node):
     def callback_timer(self):
         # Get state
         state = self.get_state()
-
+        state_transform = self.evaluate_P_B(state)
         # Broadcast the current drone pose world -> body
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "world"
-        t.child_frame_id = "body_frame"
-        t.transform.translation.x = state[0]
-        t.transform.translation.y = state[1]
-        t.transform.translation.z = state[2]
-        t.transform.rotation.x = self.vehicle_odometry.q[0]
-        t.transform.rotation.y = self.vehicle_odometry.q[1]
-        t.transform.rotation.z = self.vehicle_odometry.q[2]
-        t.transform.rotation.w = self.vehicle_odometry.q[3]
-        self.broadcaster_world_to_body.sendTransform(t)
+        self.broadcast_tf2(state_transform, "world", "body_frame")
 
         # Evaluate the error
         P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x, self.tactip.twist.angular.y, self.tactip.twist.linear.z)
@@ -162,44 +147,20 @@ class PoseBasedATS(Node):
 
         # Control law
         U_SS = self.vector_to_transformation(u_ss)
-        P_S = self.forward_kinematics(state)
+        P_S = self.evaluate_P_S(state)
 
         # Broadcast the sensor frame in the body frame
         P_BS = self.evaluate_P_BS(state[6], state[7], state[8])
-        q = R.from_matrix(P_BS[0:3,0:3]).as_quat()
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "body_frame"
-        t.child_frame_id = "sensor_frame"
-        t.transform.translation.x = P_BS[0, 3]
-        t.transform.translation.y = P_BS[1, 3]
-        t.transform.translation.z = P_BS[2, 3]
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-        self.broadcaster_body_to_sensor.sendTransform(t)
+        self.broadcast_tf2(P_BS, "body_frame", "sensor_frame")
 
         P_C = P_S @ P_SC
-        # Broadcast the estimated contact frame in the world TODO
-
+        # Broadcast the estimated contact frame in the world
+        self.broadcast_tf2(P_C, "world", "contact_frame")
 
         P_Sref = P_S @ U_SS # Transform adjustment from sensor frame to inertial frame
 
         # Broadcast correction sensor pose in sensor frame
-        q = R.from_matrix(U_SS[0:3,0:3]).as_quat()
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "sensor_frame"
-        t.child_frame_id = "corrected_sensor_frame"
-        t.transform.translation.x = U_SS[0, 3]
-        t.transform.translation.y = U_SS[1, 3]
-        t.transform.translation.z = U_SS[2, 3]
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-        self.broadcaster_sensor_to_corrected_sensor.sendTransform(t)
+        self.broadcast_tf2(U_SS, "sensor_frame", "corrected_sensor_frame")
 
         # Inverse kinematics
         result = self.inverse_kinematics(P_Sref)
@@ -217,19 +178,8 @@ class PoseBasedATS(Node):
             self.previous_yaw_cmd = state_reference[5]
             
             # Broadcast reference body frame from IK in world: world -> ref body
-            t = TransformStamped()
-            t.header.stamp = self.get_clock().now().to_msg()
-            t.header.frame_id = "world"
-            t.child_frame_id = "reference_body_frame"
-            t.transform.translation.x = state_reference[0]
-            t.transform.translation.y = state_reference[1]
-            t.transform.translation.z = state_reference[2]
-            q = R.from_euler('xyz', [state_reference[3], state_reference[4], state_reference[5]]).as_quat()
-            t.transform.rotation.x = q[0]
-            t.transform.rotation.y = q[1]
-            t.transform.rotation.z = q[2]
-            t.transform.rotation.w = q[3]
-            self.broadcaster_world_to_reference_body.sendTransform(t)
+            self.broadcast_tf2(self.evaluate_P_B(state_reference), "world", "reference_body_frame")
+            self.broadcast_tf2(self.evaluate_P_BS(*state_reference[5:8]), "reference_body_frame", "reference_sensor_frame")
 
             # OUTPUT: Publish the reference servo positions to the servo driver
             msg = JointState()
@@ -238,25 +188,12 @@ class PoseBasedATS(Node):
             msg.header.stamp = self.get_clock().now().to_msg()
             self.publisher_servo_positions.publish(msg)
 
-            # Publish reference sensor pose based on IK
-            P_BS = self.evaluate_P_BS(state_reference[6], state_reference[7], state_reference[8])
-            t = TransformStamped()
-            t.header.stamp = self.get_clock().now().to_msg()
-            t.header.frame_id = "reference_body_frame"
-            t.child_frame_id = "reference_sensor_frame"
-            t.transform.translation.x = P_BS[0, 3]
-            t.transform.translation.y = P_BS[1, 3]
-            t.transform.translation.z = P_BS[2, 3]
-            q = R.from_euler('xyz', P_BS[0:3, 0:3]).as_quat()
-            t.transform.rotation.x = q[0]
-            t.transform.rotation.y = q[1]
-            t.transform.rotation.z = q[2]
-            t.transform.rotation.w = q[3]
-            self.broadcaster_reference_body_to_reference_sensor.sendTransform(t)
-
             # Publish kinematic inversion error
             # # TODO: Add a message on the logger if the IK error is too large
-            self.publish_ki_error(self.kinematic_inversion_error(state_reference, P_Sref, self.get_state()))
+            (ki_error, reg) = self.kinematic_inversion_error(state_reference, P_Sref, self.get_state())
+            if ki_error > 0.001:
+                self.get_logger().info(f"IK error is large: {ki_error}")
+            self.publish_ki_error(ki_error)
 
         elif result[1]!=True:
             self.get_logger().error(f"IK optimization failed to converge with error {result[2]}")
@@ -275,6 +212,34 @@ class PoseBasedATS(Node):
     
     def md_callback(self, msg):
         self.md_state = msg.data
+
+    ''' Evaluate transformation matrix of body frame in inertial frame
+    '''
+    def evaluate_P_B(self,state):
+        pitch = state[3]
+        roll = state[4]
+        yaw = state[5]
+        x_B = state[0]
+        y_B = state[1]
+        z_B = state[2]
+        P_B = np.zeros((4,4))
+        P_B[0,0] = np.cos(pitch)*np.cos(yaw)
+        P_B[0,1] = np.sin(pitch)*np.sin(roll)*np.cos(yaw) - np.sin(yaw)*np.cos(roll)
+        P_B[0,2] = np.sin(pitch)*np.cos(roll)*np.cos(yaw) + np.sin(roll)*np.sin(yaw)
+        P_B[0,3] = x_B
+        P_B[1,0] = np.sin(yaw)*np.cos(pitch)
+        P_B[1,1] = np.sin(pitch)*np.sin(roll)*np.sin(yaw) + np.cos(roll)*np.cos(yaw)
+        P_B[1,2] = np.sin(pitch)*np.sin(yaw)*np.cos(roll) - np.sin(roll)*np.cos(yaw)
+        P_B[1,3] = y_B
+        P_B[2,0] = -np.sin(pitch)
+        P_B[2,1] = np.sin(roll)*np.cos(pitch)
+        P_B[2,2] = np.cos(pitch)*np.cos(roll)
+        P_B[2,3] = z_B
+        P_B[3,0] = 0
+        P_B[3,1] = 0
+        P_B[3,2] = 0
+        P_B[3,3] = 1
+        return P_B
 
     ''' Evaluate transformation matrix of contact frame in sensor frame
     '''
@@ -322,6 +287,8 @@ class PoseBasedATS(Node):
         P_CS[3,3] = 1
         return P_CS
     
+    ''' Evaluate transformation matrix of sensor frame in body frame 
+    '''
     def evaluate_P_BS(self, q_1, q_2, q_3):
         P_BS = np.zeros((4,4))
         P_BS[0,0] = np.cos(q_2)
@@ -342,6 +309,8 @@ class PoseBasedATS(Node):
         P_BS[3,3] = 1
         return P_BS
 
+    ''' Evaluate transformation matrix of contact frame in inertial frame
+    '''
     def evaluate_P_C(self, state, alpha, beta, d):
         x_B = state[0]
         y_B = state[1]
@@ -374,7 +343,7 @@ class PoseBasedATS(Node):
 
     ''' Get HTM describing end-effector (sensor) pose in inertial frame -> P_S, evaluated at latest state
     '''
-    def forward_kinematics(self, state):
+    def evaluate_P_S(self, state):
         x_B = state[0]
         y_B = state[1]
         z_B = state[2]
@@ -497,7 +466,7 @@ class PoseBasedATS(Node):
         return HTM
 
     def kinematic_inversion_error(self, state, P_des, current_state):
-        P_S = self.forward_kinematics(state)
+        P_S = self.evaluate_P_S(state)
         # Position error (Euclidean distance)
         pos_err = np.linalg.norm(P_S[:3, 3] - P_des[:3, 3])
 
@@ -513,7 +482,7 @@ class PoseBasedATS(Node):
 
     # Inverse kinematics stuff
     def ik_objective(self, state, P_des, current_state):
-        P_S = self.forward_kinematics(state)
+        P_S = self.evaluate_P_S(state)
 
         # Position error (Euclidean distance)
         pos_err = np.linalg.norm(P_S[:3, 3] - P_des[:3, 3])
@@ -562,7 +531,24 @@ class PoseBasedATS(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         publisher.publish(msg)
 
-    def publish_ki_error(self, error):
+    def broadcast_tf2(self, T:np.array, parent_frame:str, child_frame:str, tf_broadcaster: TransformBroadcaster):
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = parent_frame
+        t.child_frame_id = child_frame
+        t.transform.translation.x = T[0,3]
+        t.transform.translation.y = T[1,3]
+        t.transform.translation.z = T[2,3]
+        rot = R.from_matrix(T[:3,:3])
+        quat = rot.as_quat()  # Returns in (x, y, z, w) format
+        t.transform.rotation.x = quat[0]
+        t.transform.rotation.y = quat[1]
+        t.transform.rotation.z = quat[2]
+        t.transform.rotation.w = quat[3]
+
+        tf_broadcaster.sendTransform(t)
+
+    def publish_ki_error(self, error:float):
         ki_msg = Float64()
         ki_msg.data = error[0]
         self.publisher_ki_error.publish(ki_msg)
