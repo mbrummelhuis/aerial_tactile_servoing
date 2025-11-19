@@ -21,8 +21,8 @@ class UAMStateMachine(Node):
         self.get_logger().info(f"StateMachine node '{node_name}' initialized.")
 
         # Parameters
-        self.declare_parameter('frequency', 10.0)
-        self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
+        self.declare_parameter('sm.frequency', 10.0)
+        self.frequency = self.get_parameter('sm.frequency').get_parameter_value().double_value
         self.timer_period = 1.0 / self.frequency
         self.declare_parameter('sm.position_clip', 0.0)
         self.position_clip = self.get_parameter('sm.position_clip').get_parameter_value().double_value
@@ -66,6 +66,7 @@ class UAMStateMachine(Node):
         self.home_position = np.zeros(4)  # x, y, z, heading
         self.hover_position = np.zeros(4)  # x, y, z, heading
         self.land_position = np.zeros(4)  # x, y, z, heading
+        self.running_position = np.zeros(4)  # x, y, z, heading
 
     def publish_offboard_position_mode(self):
         msg = OffboardControlMode()

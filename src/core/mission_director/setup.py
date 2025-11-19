@@ -23,6 +23,8 @@ setup(
     entry_points={
         'console_scripts': [
             'uam_md_test = mission_director.uam_md_test:main',
+            'uam_control_test = mission_director.uam_control_test:main',
+            'ats_mission = mission_director.ats_mission:main',
         ],
     },
 )
