@@ -113,7 +113,8 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
         if ((!(servodata_[i].min_angle == 0.0 && servodata_[i].max_angle == 0.0)) && 
             (servodata_[i].present_position < servodata_[i].min_angle || servodata_[i].present_position > servodata_[i].max_angle))
         {
-            RCLCPP_ERROR(this->get_logger(), "Present position %.3f out of position limits (MIN: %.3f, MAX: %.3f). Exiting.", 
+            RCLCPP_ERROR(this->get_logger(), "[ID: %d] Present position %.3f out of position limits (MIN: %.3f, MAX: %.3f). Exiting.", 
+                servodata_[i].id,
                 servodata_[i].present_position,
                 servodata_[i].min_angle,
                 servodata_[i].max_angle);
@@ -121,7 +122,10 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
         }
         servodata_[i].goal_position = servodata_[i].present_position;
         servodata_[i].goal_velocity = servodata_[i].present_velocity;
-        RCLCPP_INFO(this->get_logger(), "Present position %.3f, goal position %.3f", servodata_[i].present_position, servodata_[i].goal_position);
+        RCLCPP_INFO(this->get_logger(), "[ID: %d] Present position %.3f, goal position %.3f",
+            servodata_[i].id,
+            servodata_[i].present_position, 
+            servodata_[i].goal_position);
     }
 
     // Set up the servos and engage torque
@@ -167,8 +171,8 @@ void DXLDriver::write_goal_positions()
             goal_position = servodata_[i].goal_position;
         }
         int32_t goal_pos_ticks = pos_rad2int(servodata_[i].id, goal_position);
-        RCLCPP_INFO(this->get_logger(), "goal position %f", goal_position);
-        RCLCPP_INFO(this->get_logger(), "goal position ticks %i", goal_pos_ticks);
+        // RCLCPP_INFO(this->get_logger(), "goal position %f", goal_position);
+        // RCLCPP_INFO(this->get_logger(), "goal position ticks %i", goal_pos_ticks);
 
         param_goal_position[0] = DXL_LOBYTE(DXL_LOWORD(goal_pos_ticks));
         param_goal_position[1] = DXL_HIBYTE(DXL_LOWORD(goal_pos_ticks));
@@ -233,7 +237,11 @@ void DXLDriver::read_present_positions()
         {
             int32_t present_position_ticks = gsrPosition->getData(ids_[i], DXLREGISTER::PRESENT_POSITION, 4);
             servodata_[i].present_position = pos_int2rad(servodata_[i].id, present_position_ticks);
-            RCLCPP_INFO(this->get_logger(), "[ID: %i] Present position ticks %d, present position rads %.3f", servodata_[i].id, present_position_ticks, servodata_[i].present_position);
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
+                "[ID: %i] Present position ticks %d, present position rads %.3f", 
+                servodata_[i].id, 
+                present_position_ticks, 
+                servodata_[i].present_position);
         }
     }
     else
@@ -367,6 +375,8 @@ bool DXLDriver::write_home_position_at_current_position()
 
 bool DXLDriver::write_torque_enable(int8_t torque_enable)
 {
+
+    // TODO: Set current position as goal position?
     bool success = true;
     for (int i = 0; i < num_servos_; i++)
     {
@@ -461,9 +471,9 @@ void DXLDriver::setup_dynamixel(uint8_t dxl_id)
     );
 
     if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "Failed to set Position Control Mode.");
+        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "[ID: %d] Failed to set Position Control Mode.", dxl_id);
     } else {
-        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "Succeeded to set Position Control Mode.");
+        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "[ID: %d] Succeeded to set Position Control Mode.", dxl_id);
     }
 
     // Enable Torque of DYNAMIXEL
@@ -476,9 +486,9 @@ void DXLDriver::setup_dynamixel(uint8_t dxl_id)
     );
 
     if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "Failed to enable torque.");
+        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "[ID: %d] Failed to enable torque.", dxl_id);
     } else {
-        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "Succeeded to enable torque.");
+        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "[ID: %d] Succeeded to enable torque.", dxl_id);
     }
 }
 

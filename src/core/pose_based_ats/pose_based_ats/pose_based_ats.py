@@ -122,6 +122,7 @@ class PoseBasedATS(Node):
         self.previous_yaw_cmd = 0.0
 
         # Timer
+        self.get_logger().info("Starting pose-based ATS controller...")
         self.period = 1./self.get_parameter('frequency').get_parameter_value().double_value
         self.timer = self.create_timer(self.period, self.callback_timer)
 
@@ -189,11 +190,10 @@ class PoseBasedATS(Node):
             self.publisher_servo_positions.publish(msg)
 
             # Publish kinematic inversion error
-            # # TODO: Add a message on the logger if the IK error is too large
             (ki_error, reg) = self.kinematic_inversion_error(state_reference, P_Sref, self.get_state())
             if ki_error > 0.001:
                 self.get_logger().info(f"IK error is large: {ki_error}")
-            self.publish_ki_error(ki_error)
+            self.publish_ki_error([ki_error, reg])
 
         elif result[1]!=True:
             self.get_logger().error(f"IK optimization failed to converge with error {result[2]}")
@@ -517,21 +517,8 @@ class PoseBasedATS(Node):
             options={'ftol': 1e-6, 'disp': False}
         )
         return result.x, result.success, result.message, result.fun   
-    
-    def publish_transform(self, T, publisher):
-        vec = self.transformation_to_vector(T)
-        msg = TwistStamped()
-        msg.twist.linear.x = vec[0]
-        msg.twist.linear.y = vec[1]
-        msg.twist.linear.z = vec[2]
-        msg.twist.angular.x = vec[3]
-        msg.twist.angular.y = vec[4]
-        msg.twist.angular.z = vec[5]
 
-        msg.header.stamp = self.get_clock().now().to_msg()
-        publisher.publish(msg)
-
-    def broadcast_tf2(self, T:np.array, parent_frame:str, child_frame:str, tf_broadcaster: TransformBroadcaster):
+    def broadcast_tf2(self, T:np.array, parent_frame:str, child_frame:str):
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = parent_frame
@@ -546,7 +533,7 @@ class PoseBasedATS(Node):
         t.transform.rotation.z = quat[2]
         t.transform.rotation.w = quat[3]
 
-        tf_broadcaster.sendTransform(t)
+        self.broadcaster_tf2.sendTransform(t)
 
     def publish_ki_error(self, error:float):
         ki_msg = Float64()
