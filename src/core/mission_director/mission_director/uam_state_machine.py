@@ -61,6 +61,8 @@ class UAMStateMachine(Node):
         self.armed = False
         self.offboard = False
         self.vehicle_local_position = VehicleLocalPosition()
+        self.vehicle_odometry = VehicleOdometry()
+        self.vehicle_status = VehicleStatus()
         self.state_start_time = datetime.datetime.now()
         self.servo_state = JointState()
         self.home_position = np.zeros(4)  # x, y, z, heading
@@ -150,7 +152,7 @@ class UAMStateMachine(Node):
         self.vehicle_status = msg
     
     def vehicle_odometry_callback(self, msg: VehicleOdometry):
-        self.vehicle_local_position = msg
+        self.vehicle_odometry = msg
 
     def vehicle_local_position_callback(self, msg: VehicleLocalPosition):
         self.vehicle_local_position = msg

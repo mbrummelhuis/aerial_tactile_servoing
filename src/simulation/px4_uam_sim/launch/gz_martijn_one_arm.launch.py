@@ -19,12 +19,9 @@ from ament_index_python.packages import (get_package_share_directory)
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument,
                             ExecuteProcess,
-                            SetEnvironmentVariable,
-                            IncludeLaunchDescription,
-                            SetLaunchConfiguration,
-                            TimerAction)
+                            IncludeLaunchDescription)
 
-from launch.substitutions import PathJoinSubstitution, LaunchConfiguration, TextSubstitution
+from launch.substitutions import PathJoinSubstitution
 from launch_ros.actions import Node
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
@@ -103,7 +100,7 @@ def generate_launch_description():
              executable='create',
             arguments=[
                 '-name', 'my_custom_model',
-                '-file',  '/home/martijn/aerial_tactile_servoing/src/px4_uam_sim/urdf/martijn_one_arm.urdf',
+                '-file',  '/home/martijn/aerial_tactile_servoing/src/simulation/px4_uam_sim/urdf/martijn_one_arm.urdf',
                 '-z', ' 0.1'],
             output='screen'),
         Node(package='px4_uam_sim',
