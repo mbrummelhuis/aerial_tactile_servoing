@@ -112,7 +112,7 @@ private:
     /// @brief Callback for the timer, execute interface loop
     void loop();
     void write_goal_positions();
-    void read_all_servo_data();
+    int read_all_servo_data();
     void servo_reference_callback(const sensor_msgs::msg::JointState::SharedPtr msg);
     void publish_all_servo_data();
     //void setup_port();
@@ -123,10 +123,10 @@ private:
     uint32_t vel_rad2int(uint8_t id, double velocity_rads); 
     double cur_int2amp(uint16_t current_ticks);
 
-    void read_present_positions();
-    void read_present_velocities();
-    void read_present_currents();
-    void read_present_pwms();
+    int read_present_positions();
+    int read_present_velocities();
+    int read_present_currents();
+    int read_present_pwms();
 
     void write_max_velocities();
 

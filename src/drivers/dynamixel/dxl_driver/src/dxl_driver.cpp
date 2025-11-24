@@ -39,7 +39,7 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
     this->declare_parameter("servos.max_angles", std::vector<double>(0.0));
 
     // Generate uint8_t vector of ids
-    std::vector<long> int_ids = this->get_parameter("servos.ids").as_integer_array();
+    std::vector<int64_t> int_ids = this->get_parameter("servos.ids").as_integer_array();
     ids_.resize(int_ids.size());
     std::transform(int_ids.begin(), int_ids.end(), ids_.begin(),
                     [](int val) { return static_cast<uint8_t>(val); });
@@ -69,8 +69,6 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
         current_servo_data.goal_velocity = 0.0;
         current_servo_data.max_velocity = max_speeds[i];
         servodata_.push_back(current_servo_data);
-
-        write_max_velocities(); // Does nothing in position mode
 
         int dxl_addparam_result = false;
         dxl_addparam_result = gsrPosition->addParam(ids_[i]);
@@ -107,7 +105,12 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
     RCLCPP_INFO(this->get_logger(), "Succeeded creating ROS2 interfaces");
 
     // Read current positions and set as reference
-    read_all_servo_data();
+    int result = read_all_servo_data();
+    if (result != 0)
+    {
+        RCLCPP_ERROR(this->get_logger(), "Failed initial data read, quitting driver for safety");
+        exit(-13);
+    }
     for (int i = 0; i < num_servos_; i++)
     {
         if ((!(servodata_[i].min_angle == 0.0 && servodata_[i].max_angle == 0.0)) && 
@@ -197,12 +200,14 @@ void DXLDriver::write_goal_positions()
     gswPosition->clearParam(); 
 }
 
-void DXLDriver::read_all_servo_data()
+int DXLDriver::read_all_servo_data()
 {
-    read_present_positions();
-    read_present_velocities();
-    read_present_currents();
-    read_present_pwms();
+    int res = 0;
+    res += read_present_positions();
+    res += read_present_velocities();
+    res += read_present_currents();
+    res += read_present_pwms();
+    return res;
 }
 
 void DXLDriver::publish_all_servo_data()
@@ -228,7 +233,7 @@ void DXLDriver::publish_all_servo_data()
     this->pub_servo_state->publish(servo_state_msg);
 }
 
-void DXLDriver::read_present_positions()
+int DXLDriver::read_present_positions()
 {
     dxl_comm_result = gsrPosition->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
@@ -246,11 +251,12 @@ void DXLDriver::read_present_positions()
     }
     else
     {
-        RCLCPP_ERROR(this->get_logger(), "Failed to get present positions with GroupSyncRead");
+        RCLCPP_ERROR(this->get_logger(), "Failed to get present positions with GroupSyncRead. Error code %d", dxl_comm_result);
     }
+    return dxl_comm_result;
 }
 
-void DXLDriver::read_present_velocities()
+int DXLDriver::read_present_velocities()
 {
     dxl_comm_result = gsrVelocity->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
@@ -262,11 +268,12 @@ void DXLDriver::read_present_velocities()
     }
     else
     {
-        RCLCPP_ERROR(this->get_logger(), "Failed to get present velocities with GroupSyncRead");
+        RCLCPP_ERROR(this->get_logger(), "Failed to get present velocities with GroupSyncRead. Error code %d", dxl_comm_result);
     }
+    return dxl_comm_result;
 }
 
-void DXLDriver::read_present_currents()
+int DXLDriver::read_present_currents()
 {
     dxl_comm_result = gsrCurrent->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
@@ -278,11 +285,12 @@ void DXLDriver::read_present_currents()
     }
     else
     {
-        RCLCPP_ERROR(this->get_logger(), "Failed to get present currents with GroupSyncRead");
+        RCLCPP_ERROR(this->get_logger(), "Failed to get present currents with GroupSyncRead. Error code %d", dxl_comm_result);
     }
+    return dxl_comm_result;
 }
 
-void DXLDriver::read_present_pwms()
+int DXLDriver::read_present_pwms()
 {
     dxl_comm_result = gsrPWM->txRxPacket();
     if (dxl_comm_result == COMM_SUCCESS)
@@ -294,8 +302,9 @@ void DXLDriver::read_present_pwms()
     }
     else
     {
-        RCLCPP_ERROR(this->get_logger(), "Failed to get present positions with GroupSyncRead");
+        RCLCPP_ERROR(this->get_logger(), "Failed to get present pwms with GroupSyncRead. Error code %d", dxl_comm_result);
     }
+    return dxl_comm_result;
 }
 
 void DXLDriver::write_max_velocities()
@@ -346,12 +355,10 @@ bool DXLDriver::write_home_position_at_current_position()
             RCLCPP_ERROR(this->get_logger(), "[ID: %i] Read error, comm result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
             return false; // Exit if cannot read the current homing offset
         }
-        else{
-            RCLCPP_INFO(this->get_logger(), "[ID: %i] Current home position was %d", servodata_[i].id, homing_offset);
-        }
+
         // Update homing offset with current position
-        RCLCPP_INFO(this->get_logger(), "[ID: %i] Present position ticks %d", servodata_[i].id, pos_rad2int(servodata_[i].id, servodata_[i].present_position));
         int32_t new_homing_offset = -(pos_rad2int(servodata_[i].id, servodata_[i].present_position) - homing_offset);
+        RCLCPP_INFO(this->get_logger(), "[ID: %i] Home position was %d, new home position %d", servodata_[i].id, homing_offset, new_homing_offset);
         dxl_comm_result = packetHandler->write4ByteTxRx(
             portHandler,
             servodata_[i].id,
@@ -471,9 +478,9 @@ void DXLDriver::setup_dynamixel(uint8_t dxl_id)
     );
 
     if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "[ID: %d] Failed to set Position Control Mode.", dxl_id);
+        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "[ID: %d] Failed to set Extended Position Control Mode.", dxl_id);
     } else {
-        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "[ID: %d] Succeeded to set Position Control Mode.", dxl_id);
+        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "[ID: %d] Succeeded to set Extended Position Control Mode.", dxl_id);
     }
 
     // Enable Torque of DYNAMIXEL
