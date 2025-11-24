@@ -16,7 +16,7 @@ from px4_msgs.msg import VehicleLocalPosition
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 class UAMStateMachine(Node):
-    def __init__(self, node_name: str):
+    def __init__(self, node_name: str, fcu_on: bool = True):
         super().__init__(node_name)
         self.get_logger().info(f"StateMachine node '{node_name}' initialized.")
 
@@ -26,10 +26,6 @@ class UAMStateMachine(Node):
         self.timer_period = 1.0 / self.frequency
         self.declare_parameter('sm.position_clip', 0.0)
         self.position_clip = self.get_parameter('sm.position_clip').get_parameter_value().double_value
-        self.declare_parameter('sm.takeoff_altitude', 1.0)
-        self.takeoff_altitude = self.get_parameter('sm.takeoff_altitude').get_parameter_value().double_value
-        self.declare_parameter('sm.dry_test', False)
-        self.dry_test = self.get_parameter('sm.dry_test').get_parameter_value().bool_value
 
         # State machine publishers and subscribers
         self.pub_sm_state = self.create_publisher(Int32, '/md/state', 10)
@@ -58,8 +54,10 @@ class UAMStateMachine(Node):
         self.FSM_state = "entrypoint"
         self.input_state = 0
         self.first_state_loop = True
+        self.fcu_on = fcu_on
         self.armed = False
         self.offboard = False
+        self.takeoff_altitude = 1.5  # Default takeoff altitude
         self.vehicle_local_position = VehicleLocalPosition()
         self.vehicle_odometry = VehicleOdometry()
         self.vehicle_status = VehicleStatus()
@@ -86,6 +84,8 @@ class UAMStateMachine(Node):
             x_clipped = np.clip(x, -self.position_clip, self.position_clip)
             y_clipped = np.clip(y, -self.position_clip, self.position_clip)
             z_clipped = np.clip(z, -self.position_clip, 0.0) # Negative up
+            if (x != x_clipped) or (y != y_clipped) or (z != z_clipped):
+                self.get_logger().warn(f"Position setpoint clipped to ({x_clipped}, {y_clipped}, {z_clipped}) from ({x}, {y}, {z})")
         else:
             x_clipped = x
             y_clipped = y
@@ -127,6 +127,37 @@ class UAMStateMachine(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         self.pub_servo_references.publish(msg)
 
+    def sim_engage_offboard_mode(self):
+        """Switch to offboard mode."""
+        self.publish_vehicle_command(
+            VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
+        self.get_logger().info("Switching to offboard mode")
+
+    def sim_arm_vehicle(self):
+        """Send an arm command to the vehicle."""
+        self.publish_vehicle_command(
+            VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0)
+        self.get_logger().info('Arm command sent')
+
+    def publish_vehicle_command(self, command, **params) -> None:
+        """Publish a vehicle command."""
+        msg = VehicleCommand()
+        msg.command = command
+        msg.param1 = params.get("param1", 0.0)
+        msg.param2 = params.get("param2", 0.0)
+        msg.param3 = params.get("param3", 0.0)
+        msg.param4 = params.get("param4", 0.0)
+        msg.param5 = params.get("param5", 0.0)
+        msg.param6 = params.get("param6", 0.0)
+        msg.param7 = params.get("param7", 0.0)
+        msg.target_system = 1
+        msg.target_component = 1
+        msg.source_system = 1
+        msg.source_component = 1
+        msg.from_external = True
+        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.pub_vehicle_command.publish(msg)
+
     #--------------------------------------------------------------------------
     # Callbacks
     #--------------------------------------------------------------------------
@@ -167,7 +198,7 @@ class UAMStateMachine(Node):
         self.handle_state(state_number=0)
         self.home_position[0] = self.vehicle_local_position.x
         self.home_position[1] = self.vehicle_local_position.y
-        self.home_position[2] = self.takeoff_altitude
+        self.home_position[2] = self.vehicle_local_position.z
         self.home_position[3] = self.vehicle_local_position.heading        
         
         if self.first_state_loop:
@@ -193,19 +224,21 @@ class UAMStateMachine(Node):
         elif (self.armed and self.offboard) or self.input_state == 1:
             self.transition_to_state(new_state=next_state)
 
-    def state_takeoff(self, next_state='emergency'):
+    def state_takeoff(self, target_altitude = 1.5, next_state='emergency'):
         self.handle_state(state_number=4)
         self.publish_trajectory_position_setpoint(*self.home_position)
         current_altitude = self.vehicle_local_position.z
 
         # First state loop
         if self.first_state_loop:
+            self.takeoff_altitude = -target_altitude
+            self.home_position[2] = self.takeoff_altitude
             self.get_logger().info(f'[4] Vehicle local position heading: {self.home_position[3]} rad')
-            self.get_logger().info(f'[4] Takeoff altitude: {self.home_position[2]} m')
+            self.get_logger().info(f'[4] Takeoff z-coord: {self.home_position[2]} m')
             self.first_state_loop = False
 
         # State transition
-        if not self.offboard and not self.dry_test:
+        if not self.offboard and self.fcu_on:
             self.transition_to_state('emergency')
         elif abs(current_altitude)+0.1 > abs(self.home_position[2]) or self.input_state==1:
             self.transition_to_state(new_state=next_state)
@@ -225,7 +258,7 @@ class UAMStateMachine(Node):
             self.first_state_loop = False
 
         # State transition
-        if not self.offboard and not self.dry_test:
+        if not self.offboard and self.fcu_on:
             self.transition_to_state('emergency')
         elif (self.vehicle_local_position.z >= -0.1 and self.land_position[2] > 0.5) or self.input_state==1:
             self.transition_to_state(new_state=next_state)
@@ -245,7 +278,7 @@ class UAMStateMachine(Node):
         self.get_logger().info(f'Hovering... {(datetime.datetime.now()-self.state_start_time).seconds:.1f}/{duration_sec} sec', throttle_duration_sec=1)
 
         # State transition
-        if not self.offboard and not self.dry_test:
+        if not self.offboard and self.fcu_on:
             self.transition_to_state('emergency')
         elif (datetime.datetime.now()-self.state_start_time).seconds > duration_sec or self.input_state==1:
             self.transition_to_state(new_state=next_state)
@@ -260,16 +293,60 @@ class UAMStateMachine(Node):
             self.hover_position[2] = self.vehicle_local_position.z
             self.hover_position[3] = self.vehicle_local_position.heading
             self.publish_servo_position_references(q)
-            self.get_logger().info(f'[6] Hovering at altitude: {self.home_position[2]} m while moving arms to states {q}')
+            self.get_logger().info(f'[11] Hovering at altitude: {self.home_position[2]} m while moving arms to states {q}')
             self.first_state_loop = False
 
         # Calculate euclidean distance between current and target servo positions
         current_q = np.array(self.servo_state.position)
-        target_q = np.array(q)
+        target_q = np.array(q)[:len(current_q)]  # Match lengths
         error = np.linalg.norm(current_q - target_q)
+        self.get_logger().info(f'Current arm positions: {current_q}, Target arm positions: {target_q}, Error: {error:.4f}', throttle_duration_sec=1)
 
         # State transition
-        if not self.offboard and not self.dry_test:
+        if not self.offboard and self.fcu_on:
             self.transition_to_state('emergency')
-        elif (error < 0.01) or self.input_state==1: # If error is small enough or input state is 1
+        elif (error < 0.1) or self.input_state==1: # If error is small enough or input state is 1
             self.transition_to_state(new_state=next_state)
+
+    def state_move_uam_to_position(self, target_position: list, next_state='emergency'):
+        self.handle_state(state_number=12)
+
+        # First state loop
+        if self.first_state_loop:
+            self.get_logger().info(f'[12] Moving UAM to position: {target_position}')
+            self.first_state_loop = False
+        if len(target_position) == 3:
+            target_position.append(self.vehicle_local_position.heading)  # Keep current heading if not provided
+        self.publish_trajectory_position_setpoint(*target_position)
+        # Calculate euclidean distance between current and target positions
+        current_position = np.array([self.vehicle_local_position.x, self.vehicle_local_position.y, self.vehicle_local_position.z])
+        target_pos = np.array(target_position[:3])  # x, y, z
+        error = np.linalg.norm(current_position - target_pos)
+        self.get_logger().info(f'Current position: {current_position}, Target position: {target_pos}, Error: {error:.4f}', throttle_duration_sec=1)
+
+        # State transition
+        if not self.offboard and self.fcu_on:
+            self.transition_to_state('emergency')
+        elif (error < 0.2) or self.input_state==1: # If error is small enough or input state is 1
+            self.transition_to_state(new_state=next_state)
+
+    def state_sim_arm(self, next_state='emergency'):
+        self.handle_state(state_number=3)
+        if not self.offboard and self.counter%self.frequency==0:
+            self.get_logger().info("Sending offboard command")
+            self.sim_engage_offboard_mode()
+            self.counter = 0
+        if not self.armed and self.offboard and self.counter%self.frequency==0:
+            self.get_logger().info("Sending arm command")
+            self.sim_arm_vehicle()
+            self.counter = 0
+
+        if self.armed and self.offboard:
+            self.transition_to_state(new_state=next_state)
+
+    def state_emergency(self):
+        self.handle_state(state_number=-1)
+        self.get_logger().warn("EMERGENCY STATE! No offboard mode.", throttle_duration_sec=1)
+
+        q_emergency = [1.578, 0.0, -1.85]
+        self.publish_servo_position_references(q_emergency)

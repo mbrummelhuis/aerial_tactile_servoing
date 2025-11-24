@@ -57,9 +57,7 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {'sm.frequency': 10.0},
-            {'sm.position_clip': 3.0},
-            {'sm.takeoff_altitude': 1.5},
-            {'sm.dry_test': False}
+            {'sm.position_clip': 3.0}
         ],
         arguments=["--ros-args", "--log-level", "info"]
     )
