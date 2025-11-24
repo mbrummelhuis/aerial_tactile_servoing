@@ -39,6 +39,8 @@ namespace DXLREGISTER
     uint8_t const GOAL_PWM          = 0x64; // Size: 2 bytes
     uint8_t const GOAL_CURRENT      = 0x66; // Size: 2 bytes
     uint8_t const GOAL_VELOCITY     = 0x68; // Size: 4 bytes
+    uint8_t const PROFILE_ACCEL     = 0x6C; // Size: 4 bytes
+    uint8_t const PROFILE_VELOCITY  = 0x70; // Size: 4 bytes
     uint8_t const GOAL_POSITION     = 0x74; // Size: 4 bytes
     uint8_t const PRESENT_PWM       = 0x7C; // Size: 2 bytes, read-only
     uint8_t const PRESENT_CURRENT   = 0x7E; // Size: 2 bytes, read-only
@@ -119,8 +121,8 @@ private:
     void setup_dynamixel(uint8_t dxl_id);
     double pos_int2rad(uint8_t id, int32_t position_ticks); // return the rad position with gear ratio and direction
     int32_t pos_rad2int(uint8_t id, double position_rads);
-    double vel_int2rad(uint8_t id, uint32_t velocity_ticks);
-    uint32_t vel_rad2int(uint8_t id, double velocity_rads); 
+    double vel_int2rad(uint8_t id, int32_t velocity_ticks);
+    int32_t vel_rad2int(uint8_t id, double velocity_rads); 
     double cur_int2amp(uint16_t current_ticks);
 
     int read_present_positions();

@@ -1,4 +1,5 @@
 #include <math.h>
+#include <cstdint>
 
 #include "dxl_driver.hpp"
 
@@ -103,6 +104,9 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
         "/set_home_positions", std::bind(&DXLDriver::srv_set_home_positions_callback,
                 this, std::placeholders::_1, std::placeholders::_2));
     RCLCPP_INFO(this->get_logger(), "Succeeded creating ROS2 interfaces");
+
+    // Set max (profile) velocities
+    write_max_velocities();
 
     // Read current positions and set as reference
     int result = read_all_servo_data();
@@ -311,12 +315,31 @@ void DXLDriver::write_max_velocities()
 {
     for (int i = 0; i < num_servos_; i++)
     {
-        // Enable Torque of DYNAMIXEL
+        // Write drive mode 0 to use velocity-based profiles
+        dxl_comm_result = packetHandler->write1ByteTxRx(
+            portHandler,
+            servodata_[i].id,
+            DXLREGISTER::DRIVE_MODE,
+            0,
+            &dxl_error
+        );
+        if (dxl_comm_result == COMM_SUCCESS)
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Set drive mode to 0", 
+                static_cast<int>(servodata_[i].id));
+        }
+        else
+        {
+            RCLCPP_ERROR(this->get_logger(), "[ID: %i] Failed to set drive mode, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+        }
+        
+        // Write maximum profile velocity
+        uint32_t profile_velocity = static_cast<uint32_t>(std::llabs(vel_rad2int(servodata_[i].id, servodata_[i].max_velocity)));
         dxl_comm_result = packetHandler->write4ByteTxRx(
             portHandler,
             servodata_[i].id,
-            DXLREGISTER::VELOCITY_LIMIT,
-            vel_rad2int(servodata_[i].id, servodata_[i].max_velocity),
+            DXLREGISTER::PROFILE_VELOCITY,
+            profile_velocity,
             &dxl_error
         );
         if (dxl_comm_result == COMM_SUCCESS)
@@ -422,14 +445,16 @@ int32_t DXLDriver::pos_rad2int(uint8_t id, double position_rads)
     return position_ticks;
 }
 
-double DXLDriver::vel_int2rad(uint8_t id, uint32_t velocity_ticks)
+double DXLDriver::vel_int2rad(uint8_t id, int32_t velocity_ticks)
 {
-    return static_cast<double>(velocity_ticks * RAD_PER_SECOND_PER_TICK / servodata_[id2index_[id]].gear_ratio);
+    int i = id2index_[id];
+    return static_cast<double>(servodata_[i].direction * velocity_ticks * RAD_PER_SECOND_PER_TICK / servodata_[id2index_[id]].gear_ratio);
 }
 
-uint32_t DXLDriver::vel_rad2int(uint8_t id, double velocity_rads)
+int32_t DXLDriver::vel_rad2int(uint8_t id, double velocity_rads)
 {
-    return static_cast<uint32_t>(velocity_rads / RAD_PER_SECOND_PER_TICK * servodata_[id2index_[id]].gear_ratio);
+    int i = id2index_[id];
+    return static_cast<int32_t>(servodata_[i].direction * velocity_rads / RAD_PER_SECOND_PER_TICK * servodata_[id2index_[id]].gear_ratio);
 }
 
 double DXLDriver::cur_int2amp(uint16_t current_ticks)
