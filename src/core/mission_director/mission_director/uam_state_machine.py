@@ -231,7 +231,7 @@ class UAMStateMachine(Node):
 
         # First state loop
         if self.first_state_loop:
-            self.takeoff_altitude = -target_altitude
+            self.takeoff_altitude = -abs(target_altitude)
             self.home_position[2] = self.takeoff_altitude
             self.get_logger().info(f'[4] Vehicle local position heading: {self.home_position[3]} rad')
             self.get_logger().info(f'[4] Takeoff z-coord: {self.home_position[2]} m')

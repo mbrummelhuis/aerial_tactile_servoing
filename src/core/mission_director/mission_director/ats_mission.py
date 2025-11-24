@@ -46,7 +46,10 @@ class MissionDirector(UAMStateMachine):
 
             case "arms_takeoff_position":
                 q_right = [1.57, 0.0, -1.57] # put some position here
-                self.state_move_arms(q=q_right.append(q_right[0]-np.pi), next_state="takeoff")
+                self.state_move_arms(q=q_right.append(q_right[0]-np.pi), next_state="wait_for_arm_offboard")
+
+            case "wait_for_arm_offboard":
+                self.state_wait_for_arming(next_state="takeoff")
 
             case "takeoff":
                 self.state_takeoff(target_altitude=1.5, next_state="hover")
