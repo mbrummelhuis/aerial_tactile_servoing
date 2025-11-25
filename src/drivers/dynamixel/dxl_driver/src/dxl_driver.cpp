@@ -105,8 +105,8 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
                 this, std::placeholders::_1, std::placeholders::_2));
     RCLCPP_INFO(this->get_logger(), "Succeeded creating ROS2 interfaces");
 
-    // Set max (profile) velocities
-    write_max_velocities();
+    // Set max (profile) velocities and operating mode
+    configure_servos();
 
     // Read current positions and set as reference
     int result = read_all_servo_data();
@@ -136,7 +136,7 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
     }
 
     // Set up the servos and engage torque
-    setup_dynamixel(BROADCAST_ID); 
+    enable_all_torque(); 
 
     // Timer for publishing servo state
     double node_frequency_ = this->get_parameter("driver.frequency").as_double();
@@ -246,11 +246,11 @@ int DXLDriver::read_present_positions()
         {
             int32_t present_position_ticks = gsrPosition->getData(ids_[i], DXLREGISTER::PRESENT_POSITION, 4);
             servodata_[i].present_position = pos_int2rad(servodata_[i].id, present_position_ticks);
-            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
-                "[ID: %i] Present position ticks %d, present position rads %.3f", 
-                servodata_[i].id, 
-                present_position_ticks, 
-                servodata_[i].present_position);
+            // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000, 
+            //     "[ID: %i] Present position ticks %d, present position rads %.3f", 
+            //     servodata_[i].id, 
+            //     present_position_ticks, 
+            //     servodata_[i].present_position);
         }
     }
     else
@@ -311,30 +311,31 @@ int DXLDriver::read_present_pwms()
     return dxl_comm_result;
 }
 
-void DXLDriver::write_max_velocities()
+void DXLDriver::configure_servos()
 {
     for (int i = 0; i < num_servos_; i++)
     {
-        // Write drive mode 0 to use velocity-based profiles
+        // Write operating mode 4 to use velocity-based profiles
+        // Profile velocity resets to 0 when writing mode.
         dxl_comm_result = packetHandler->write1ByteTxRx(
             portHandler,
             servodata_[i].id,
-            DXLREGISTER::DRIVE_MODE,
-            0,
+            DXLREGISTER::OPERATING_MODE,
+            DXLMode::EXTENDED_POSITION,
             &dxl_error
         );
         if (dxl_comm_result == COMM_SUCCESS)
         {
-            RCLCPP_INFO(this->get_logger(), "[ID: %i] Set drive mode to 0", 
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Set extended position operating mode", 
                 static_cast<int>(servodata_[i].id));
         }
         else
         {
-            RCLCPP_ERROR(this->get_logger(), "[ID: %i] Failed to set drive mode, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+            RCLCPP_ERROR(this->get_logger(), "[ID: %i] Failed to set extended position operating mode, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
         }
         
         // Write maximum profile velocity
-        uint32_t profile_velocity = static_cast<uint32_t>(std::llabs(vel_rad2int(servodata_[i].id, servodata_[i].max_velocity)));
+        uint32_t profile_velocity = static_cast<uint32_t>(std::abs(vel_rad2int(servodata_[i].id, servodata_[i].max_velocity)));
         dxl_comm_result = packetHandler->write4ByteTxRx(
             portHandler,
             servodata_[i].id,
@@ -347,11 +348,25 @@ void DXLDriver::write_max_velocities()
             RCLCPP_INFO(this->get_logger(), "[ID: %i] Set max velocity %f rad/s | %d ticks", 
                 static_cast<int>(servodata_[i].id), 
                 servodata_[i].max_velocity, 
-                vel_rad2int(servodata_[i].id, servodata_[i].max_velocity));
+                profile_velocity);
         }
         else
         {
             RCLCPP_ERROR(this->get_logger(), "[ID: %i] Failed to set max velocity, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+        }
+
+        // Read back the maximum profile velocity
+        uint32_t backread_velocity;
+        dxl_comm_result = packetHandler->read4ByteTxRx(
+            portHandler,
+            servodata_[i].id,
+            DXLREGISTER::PROFILE_VELOCITY,
+            &backread_velocity,
+            &dxl_error
+        );
+        if (dxl_comm_result == COMM_SUCCESS)
+        {
+            RCLCPP_INFO(this->get_logger(), "[ID: %i] Backread max velocity %d ticks", servodata_[i].id, backread_velocity);
         }
     }
 }
@@ -491,36 +506,21 @@ void DXLDriver::srv_set_home_positions_callback(
     }
 }
 
-void DXLDriver::setup_dynamixel(uint8_t dxl_id)
+void DXLDriver::enable_all_torque()
 {
-    // Use Position Control Mode
-    dxl_comm_result = packetHandler->write1ByteTxRx(
-        portHandler,
-        dxl_id,
-        DXLREGISTER::OPERATING_MODE,
-        4,
-        &dxl_error
-    );
-
-    if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "[ID: %d] Failed to set Extended Position Control Mode.", dxl_id);
-    } else {
-        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "[ID: %d] Succeeded to set Extended Position Control Mode.", dxl_id);
-    }
-
     // Enable Torque of DYNAMIXEL
     dxl_comm_result = packetHandler->write1ByteTxRx(
         portHandler,
-        dxl_id,
+        BROADCAST_ID,
         DXLREGISTER::TORQUE_ENABLE,
         1,
         &dxl_error
     );
 
     if (dxl_comm_result != COMM_SUCCESS) {
-        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "[ID: %d] Failed to enable torque.", dxl_id);
+        RCLCPP_ERROR(rclcpp::get_logger("dxl_driver"), "[ID: %d] Failed to enable torque.", BROADCAST_ID);
     } else {
-        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "[ID: %d] Succeeded to enable torque.", dxl_id);
+        RCLCPP_INFO(rclcpp::get_logger("dxl_driver"), "[ID: %d] Succeeded to enable torque.", BROADCAST_ID);
     }
 }
 

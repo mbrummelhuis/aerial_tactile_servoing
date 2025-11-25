@@ -118,7 +118,7 @@ private:
     void servo_reference_callback(const sensor_msgs::msg::JointState::SharedPtr msg);
     void publish_all_servo_data();
     //void setup_port();
-    void setup_dynamixel(uint8_t dxl_id);
+    void enable_all_torque();
     double pos_int2rad(uint8_t id, int32_t position_ticks); // return the rad position with gear ratio and direction
     int32_t pos_rad2int(uint8_t id, double position_rads);
     double vel_int2rad(uint8_t id, int32_t velocity_ticks);
@@ -130,7 +130,7 @@ private:
     int read_present_currents();
     int read_present_pwms();
 
-    void write_max_velocities();
+    void configure_servos();
 
     bool write_home_position_at_current_position();
     bool write_torque_enable(int8_t torque_enable);
