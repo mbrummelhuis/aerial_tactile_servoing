@@ -100,9 +100,13 @@ DXLDriver::DXLDriver(dynamixel::GroupSyncRead *positionReader, dynamixel::GroupS
     set_torque_enable_srv_ = this->create_service<dxl_driver::srv::SetTorqueEnable>(
         "/set_torque_enable", std::bind(&DXLDriver::srv_set_torque_enable_callback,
                 this, std::placeholders::_1, std::placeholders::_2));
-    set_home_positions_srv_ = this->create_service<dxl_driver::srv::SetHomePositions>(
-        "/set_home_positions", std::bind(&DXLDriver::srv_set_home_positions_callback,
+    set_home_position_srv_ = this->create_service<dxl_driver::srv::SetHomePosition>(
+        "/set_home_position", std::bind(&DXLDriver::srv_set_home_position_callback,
                 this, std::placeholders::_1, std::placeholders::_2));
+    set_max_velocity_srv_ = this->create_service<dxl_driver::srv::SetMaxVelocity>(
+        "/set_max_velocity", std::bind(&DXLDriver::srv_set_max_velocity_callback,
+                this, std::placeholders::_1, std::placeholders::_2));
+
     RCLCPP_INFO(this->get_logger(), "Succeeded creating ROS2 interfaces");
 
     // Set max (profile) velocities and operating mode
@@ -335,41 +339,60 @@ void DXLDriver::configure_servos()
         }
         
         // Write maximum profile velocity
-        uint32_t profile_velocity = static_cast<uint32_t>(std::abs(vel_rad2int(servodata_[i].id, servodata_[i].max_velocity)));
-        dxl_comm_result = packetHandler->write4ByteTxRx(
-            portHandler,
-            servodata_[i].id,
-            DXLREGISTER::PROFILE_VELOCITY,
-            profile_velocity,
-            &dxl_error
-        );
-        if (dxl_comm_result == COMM_SUCCESS)
+        write_max_velocity(servodata_[i].id);
+    }
+
+}
+
+// Writes max velocity from the servodata_
+bool DXLDriver::write_max_velocity(const uint8_t id)
+{
+    int i = id2index_[id];
+    uint32_t profile_velocity = static_cast<uint32_t>(std::abs(vel_rad2int(servodata_[i].id, servodata_[i].max_velocity)));
+    dxl_comm_result = packetHandler->write4ByteTxRx(
+        portHandler,
+        servodata_[i].id,
+        DXLREGISTER::PROFILE_VELOCITY,
+        profile_velocity,
+        &dxl_error
+    );
+    if (dxl_comm_result == COMM_SUCCESS)
+    {
+        RCLCPP_INFO(this->get_logger(), "[ID: %i] Set max velocity %f rad/s | %d ticks", 
+            static_cast<int>(servodata_[i].id), 
+            servodata_[i].max_velocity, 
+            profile_velocity);
+    }
+    else
+    {
+        RCLCPP_ERROR(this->get_logger(), "[ID: %i] Failed to set max velocity, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
+        return false;
+    }
+
+    // Read back the maximum profile velocity
+    uint32_t backread_velocity;
+    dxl_comm_result = packetHandler->read4ByteTxRx(
+        portHandler,
+        servodata_[i].id,
+        DXLREGISTER::PROFILE_VELOCITY,
+        &backread_velocity,
+        &dxl_error
+    );
+    if (dxl_comm_result == COMM_SUCCESS)
+    {
+        RCLCPP_INFO(this->get_logger(), "[ID: %i] Backread max velocity %d ticks", servodata_[i].id, backread_velocity);
+        if (backread_velocity == profile_velocity)
         {
-            RCLCPP_INFO(this->get_logger(), "[ID: %i] Set max velocity %f rad/s | %d ticks", 
-                static_cast<int>(servodata_[i].id), 
-                servodata_[i].max_velocity, 
-                profile_velocity);
+            return true;
         }
         else
         {
-            RCLCPP_ERROR(this->get_logger(), "[ID: %i] Failed to set max velocity, result %i, error %i", servodata_[i].id, dxl_comm_result, dxl_error);
-        }
-
-        // Read back the maximum profile velocity
-        uint32_t backread_velocity;
-        dxl_comm_result = packetHandler->read4ByteTxRx(
-            portHandler,
-            servodata_[i].id,
-            DXLREGISTER::PROFILE_VELOCITY,
-            &backread_velocity,
-            &dxl_error
-        );
-        if (dxl_comm_result == COMM_SUCCESS)
-        {
-            RCLCPP_INFO(this->get_logger(), "[ID: %i] Backread max velocity %d ticks", servodata_[i].id, backread_velocity);
+            return false;
         }
     }
+    return false;
 }
+
 bool DXLDriver::write_home_position_at_current_position()
 {
     RCLCPP_INFO(this->get_logger(), "[SERVICE] Writing home position at the current position");
@@ -490,19 +513,42 @@ void DXLDriver::srv_set_torque_enable_callback(
     std::shared_ptr<dxl_driver::srv::SetTorqueEnable::Response> response)
 {
     bool success;
-    success = write_torque_enable(request->enable_torque);
+    success = write_torque_enable(request->set_torque_enable);
     response->success = success;
 }
 
-void DXLDriver::srv_set_home_positions_callback(
-    const std::shared_ptr<dxl_driver::srv::SetHomePositions::Request> request,
-    std::shared_ptr<dxl_driver::srv::SetHomePositions::Response> response)
+void DXLDriver::srv_set_home_position_callback(
+    const std::shared_ptr<dxl_driver::srv::SetHomePosition::Request> request,
+    std::shared_ptr<dxl_driver::srv::SetHomePosition::Response> response)
 {
-    if (request->write_home_position)
+    if (request->set_home_position)
     {
         bool success;
         success = write_home_position_at_current_position();
         response->success = success;
+    }
+}
+
+void DXLDriver::srv_set_max_velocity_callback(
+    const std::shared_ptr<dxl_driver::srv::SetMaxVelocity::Request> request,
+    std::shared_ptr<dxl_driver::srv::SetMaxVelocity::Response> response)
+{
+    RCLCPP_INFO(this->get_logger(), "[SERVICE] Setting max velocity to %f", request->max_velocity);
+    bool success;
+    response->success = true;
+    if (request->max_velocity != 0)
+    {
+        for (int i = 0; i < num_servos_; i++)
+        {
+            servodata_[i].max_velocity = request->max_velocity;
+            success = write_max_velocity(servodata_[i].id);
+            if (success == false){
+                response->success = false;
+            }
+        }
+    }
+    else{
+        response->success = false;
     }
 }
 

@@ -7,7 +7,8 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 
 #include <dxl_driver/srv/set_torque_enable.hpp>
-#include <dxl_driver/srv/set_home_positions.hpp>
+#include <dxl_driver/srv/set_home_position.hpp>
+#include <dxl_driver/srv/set_max_velocity.hpp>
 
 #define TICKS_PER_ROTATION 4096                 // rad = output/TICKS_PER_ROTATION*2pi
 #define MA_PER_TICK 2.69                        // mA = output * MA_PER_TICK
@@ -94,14 +95,17 @@ public:
 
     void srv_set_torque_enable_callback(const std::shared_ptr<dxl_driver::srv::SetTorqueEnable::Request> request,
                                         std::shared_ptr<dxl_driver::srv::SetTorqueEnable::Response> response);
-    void srv_set_home_positions_callback(const std::shared_ptr<dxl_driver::srv::SetHomePositions::Request> request,
-                                        std::shared_ptr<dxl_driver::srv::SetHomePositions::Response> response);
+    void srv_set_home_position_callback(const std::shared_ptr<dxl_driver::srv::SetHomePosition::Request> request,
+                                        std::shared_ptr<dxl_driver::srv::SetHomePosition::Response> response);
+    void srv_set_max_velocity_callback(const std::shared_ptr<dxl_driver::srv::SetMaxVelocity::Request> request,
+                                        std::shared_ptr<dxl_driver::srv::SetMaxVelocity::Response> response);
 
 private:
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_servo_reference;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_servo_state;
     rclcpp::Service<dxl_driver::srv::SetTorqueEnable>::SharedPtr set_torque_enable_srv_;
-    rclcpp::Service<dxl_driver::srv::SetHomePositions>::SharedPtr set_home_positions_srv_;
+    rclcpp::Service<dxl_driver::srv::SetHomePosition>::SharedPtr set_home_position_srv_;
+    rclcpp::Service<dxl_driver::srv::SetMaxVelocity>::SharedPtr set_max_velocity_srv_;
 
     dynamixel::GroupSyncRead *gsrPosition;
     dynamixel::GroupSyncRead *gsrVelocity;
@@ -134,6 +138,7 @@ private:
 
     bool write_home_position_at_current_position();
     bool write_torque_enable(int8_t torque_enable);
+    bool write_max_velocity(const uint8_t id);
 
     void check_parameter_sizes(size_t num_servos) const;
 

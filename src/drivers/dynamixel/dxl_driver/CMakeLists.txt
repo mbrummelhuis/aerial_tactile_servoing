@@ -20,8 +20,9 @@ find_package(sensor_msgs REQUIRED)
 
 # Add service
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "srv/SetHomePositions.srv"
+  "srv/SetHomePosition.srv"
   "srv/SetTorqueEnable.srv"
+  "srv/SetMaxVelocity.srv"
 )
 include_directories(include)
 
