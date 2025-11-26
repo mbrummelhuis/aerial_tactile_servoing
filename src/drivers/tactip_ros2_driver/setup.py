@@ -1,9 +1,10 @@
 from setuptools import find_packages, setup
 from glob import glob
+import os
 
 package_name = 'tactip_ros2_driver'
 
-model_name = 'simple_cnn_A2_1'
+model_name = 'simple_cnn_A3_2025'
 
 setup(
     name=package_name,
@@ -13,6 +14,7 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/model/', glob('resource/models/'+model_name+'/*')),
+        (os.path.join('share', package_name), glob('launch/*.launch.py')), # Add the launch files
     ],
     install_requires=[
         'setuptools', 

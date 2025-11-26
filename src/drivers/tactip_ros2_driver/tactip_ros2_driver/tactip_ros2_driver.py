@@ -49,8 +49,12 @@ class TactipDriver(Node):
         self.declare_parameter('verbose', False)
         self.declare_parameter('test_model_time', False)
         self.declare_parameter('save_debug_image', False)
+        self.declare_parameter('save_interval', 1.)
         self.declare_parameter('ssim_contact_threshold', 0.7)
         self.declare_parameter('save_directory', 'Please set a save_directory in the launch file')
+
+        # Image saving interval
+        self.image_save_interval = self.get_parameter('save_interval').get_parameter_value().double_value
 
         # Instantiate Tactip sensor
         self.sensor = TacTip(self.get_parameter('source').get_parameter_value().integer_value)
@@ -60,6 +64,7 @@ class TactipDriver(Node):
         self.get_logger().info("Tactip driver initialized")
         self.get_logger().info(BASE_MODEL_PATH)
         self.get_logger().info(f"Reading from /dev/video{self.get_parameter('source').get_parameter_value().integer_value}" )
+        self.get_logger().info(f"Sensor processing params: {self.sensor.sensor_params}")
 
 
         # Set up period image saving if enabled in launch
@@ -100,7 +105,7 @@ class TactipDriver(Node):
     def timer_callback(self):
         # read the data
         # Save an image every second
-        if self.get_parameter('save_debug_image').get_parameter_value().bool_value and self.cycle_counter%self.frequency == 0:
+        if self.get_parameter('save_debug_image').get_parameter_value().bool_value and self.cycle_counter%int(self.frequency*self.image_save_interval) == 0:
             raw_outfile = os.path.join(self.image_outfile_path,'raw_image'+str(self.img_counter)+'.png')
             proc_outfile = os.path.join(self.image_outfile_path,'sensor_image'+str(self.img_counter)+'.png')
             sensor_image = self.sensor.process(raw_outfile=raw_outfile, proc_outfile=proc_outfile)
