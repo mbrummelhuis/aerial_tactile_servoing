@@ -14,18 +14,18 @@ Launch simulation with one arm. Corresponds to the implementation after refactor
 The package can be launched with 'ros2 launch ats_bringup sim_gz_one_new.launch.py'
 """
 logging = False
-config_name = 'dxl_ros2_ats.yaml'
+config_name = 'dxl_ros2_twoarms.yaml'
 
 def generate_launch_description():
     ld = LaunchDescription()
 
     # Add the paths to the simulation and controller launch files
-    sim_launch_path = os.path.join(get_package_share_directory('px4_uam_sim'), 'launch', 'gz_martijn_one_arm.launch.py')
+    sim_launch_path = os.path.join(get_package_share_directory('px4_uam_sim'), 'launch', 'gz_martijn.launch.py')
     ld.add_action(IncludeLaunchDescription(
         PythonLaunchDescriptionSource(sim_launch_path),
         launch_arguments={
             'logging': 'false', 
-            'tactip_enable': 'true', 
+            'tactip_enable': 'false', 
             'major_frequency': '25.0'}.items())
         )
     # Add sim remapper node
@@ -52,27 +52,17 @@ def generate_launch_description():
     # Mission director node
     mission_director = Node(
         package="mission_director",
-        executable="uam_control_test",
-        name="md_uam_control_test",
+        executable="ymca_md",
+        name="md_ymca",
         output="screen",
         parameters=[
             {'sm.frequency': 10.0},
-            {'sm.position_clip': 3.0}
+            {'sm.position_clip': 3.0},
+            {'sm.takeoff_altitude': 1.5},
+            {'sm.dry_test': False}
         ],
         arguments=["--ros-args", "--log-level", "info"]
     )
     ld.add_action(mission_director)
-
-    # Dynamixel servo driver node
-    param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', config_name)
-    servo_driver = Node(
-        package="dxl_driver",
-        executable="dxl_driver_node",
-        name="dxl_driver",
-        output="screen",
-        parameters=[param_file],
-        arguments=["--ros-args", "--log-level", "info"]
-    )
-    ld.add_action(servo_driver)
 
     return ld

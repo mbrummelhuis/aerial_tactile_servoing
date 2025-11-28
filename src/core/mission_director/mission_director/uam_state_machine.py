@@ -292,10 +292,10 @@ class UAMStateMachine(Node):
             self.hover_position[1] = self.vehicle_local_position.y
             self.hover_position[2] = self.vehicle_local_position.z
             self.hover_position[3] = self.vehicle_local_position.heading
-            self.publish_servo_position_references(q)
             self.get_logger().info(f'[11] Hovering at altitude: {self.home_position[2]} m while moving arms to states {q}')
             self.first_state_loop = False
 
+        self.publish_servo_position_references(q)
         # Calculate euclidean distance between current and target servo positions
         current_q = np.array(self.servo_state.position)
         target_q = np.array(q)[:len(current_q)]  # Match lengths

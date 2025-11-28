@@ -95,7 +95,7 @@ def generate_launch_description():
             ('/elbow_2_joint_vel', '/elbow_2_vel_cmd'),
             ('/forearm_1_joint_vel', '/forearm_1_vel_cmd'),
             ('/forearm_2_joint_vel', '/forearm_2_vel_cmd'),            
-            ('world/world_demo/model/my_custom_model/joint_state', '/joint_states')
+            ('world/world_demo/model/my_custom_model/joint_state', '/servo/out/state')
         ],
         output="screen"
     )
@@ -112,7 +112,7 @@ def generate_launch_description():
              executable='create',
             arguments=[
                 '-name', 'my_custom_model',
-                '-file',  '/home/martijn/aerial_tactile_servoing/src/px4_uam_sim/urdf/martijn.urdf',
+                '-file',  '/home/martijn/aerial_tactile_servoing/src/simulation/px4_uam_sim/urdf/martijn.urdf',
                 '-z', ' 0.1'],
             output='screen')
     ])
