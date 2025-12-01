@@ -156,7 +156,7 @@ class PoseBasedATS(Node):
 
         P_C = P_S @ P_SC
         # Broadcast the estimated contact frame in the world
-        self.broadcast_tf2(P_C, "world", "contact_frame")
+        # self.broadcast_tf2(P_C, "world", "contact_frame")
 
         P_Sref = P_S @ U_SS # Transform adjustment from sensor frame to inertial frame
 

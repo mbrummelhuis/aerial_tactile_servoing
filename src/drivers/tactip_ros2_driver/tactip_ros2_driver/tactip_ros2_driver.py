@@ -159,19 +159,24 @@ class TactipDriver(Node):
         self.publisher_pose_.publish(msg)
         #self.get_logger().info(f"Published data: {msg}")
 
+        # Invert the transform
+        q = quaternion_from_euler(np.deg2rad(data[3]), np.deg2rad(data[4]), np.deg2rad(data[5]))
+        q_inv = np.array([-q[0], -q[1], -q[2], q[3]])
+        R_inv = R.from_quat(q_inv).as_matrix()
+        translation_inv = - (R_inv @ np.array([data[0],data[1],data[2]]))
+
         # Broadcast the TF
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "contact_frame"
-        t.child_frame_id = "sensor_frame"
-        t.transform.translation.x = data[0]/1000.
-        t.transform.translation.y = data[1]/1000.
-        t.transform.translation.z = data[2]/1000.
-        q = quaternion_from_euler(np.deg2rad(data[3]), np.deg2rad(data[4]), np.deg2rad(data[5]))
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
+        t.header.frame_id = "sensor_frame"
+        t.child_frame_id = "contact_frame"
+        t.transform.translation.x = float(translation_inv[0])/1000.
+        t.transform.translation.y = float(translation_inv[1])/1000.
+        t.transform.translation.z = float(translation_inv[2])/1000.
+        t.transform.rotation.x = float(q_inv[0])
+        t.transform.rotation.y = float(q_inv[1])
+        t.transform.rotation.z = float(q_inv[2])
+        t.transform.rotation.w = float(q_inv[3])
         self.broadcaster_tf.sendTransform(t)
 
         self.cycle_counter +=1

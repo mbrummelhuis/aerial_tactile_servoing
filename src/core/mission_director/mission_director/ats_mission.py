@@ -51,7 +51,7 @@ class MissionDirector(UAMStateMachine):
                 self.state_takeoff(target_altitude=1.5, next_state="hover")
 
             case "hover":
-                self.state_hover(duration_sec=5, next_state="pre_contact_uam_position")
+                self.state_hover(duration_sec=1200, next_state="pre_contact_uam_position")
 
             case "pre_contact_uam_position":
                 self.state_move_uam_to_position([0.0, 0.5, -1.5, 0.0], next_state="pre_contact_arm_position")
@@ -76,6 +76,12 @@ class MissionDirector(UAMStateMachine):
                 # Update position setpoint
                 self.running_position[1] += approach_speed / self.frequency  # Increase y at approach
                 self.get_logger().info(f'Approaching... Y setpoint: {self.running_position[1]} m', throttle_duration_sec=1)
+                self.publish_trajectory_position_setpoint(
+                    self.running_position[0],
+                    self.running_position[1],
+                    self.running_position[2],
+                    self.running_position[3]
+                )
 
                 # State transition
                 if not self.offboard and self.fcu_on:

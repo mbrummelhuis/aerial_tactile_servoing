@@ -11,6 +11,7 @@ class SimRemapper(Node):
         super().__init__('sim_remapper')
 
         self.declare_parameter('frequency', 25.)
+        self.declare_parameter('verbose', False)
 
         # Arm subscribers
         self.subscriber_servo_state = self.create_subscription(JointState, '/servo/in/state', self.servo_refs_callback, 10)
@@ -34,6 +35,8 @@ class SimRemapper(Node):
 
         self.feedback_length = 0
         self.ref_length = 0
+
+        self.verbose = self.get_parameter('verbose').get_parameter_value().bool_value
 
         # Timer -- always last
         self.counter = 0
@@ -72,7 +75,8 @@ class SimRemapper(Node):
             q_d_cmd_list.append(self.kp*(q-self.arm_positions[i]) - self.kd*self.arm_velocities[i])
             error += abs(q-self.arm_positions[i])
 
-        self.get_logger().info(f"Error: {error/len(q_cmd)}, Cmds: {q_d_cmd_list}", throttle_duration_sec=2.0)
+        if self.verbose:
+            self.get_logger().info(f"Error: {error/len(q_cmd)}, Cmds: {q_d_cmd_list}", throttle_duration_sec=2.0)
         self.publish_arm_velocity_commands(q_d_cmd_list)
 
         if(error/len(q_cmd) < epsilon):
