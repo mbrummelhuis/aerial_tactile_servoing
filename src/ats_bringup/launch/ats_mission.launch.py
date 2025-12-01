@@ -17,7 +17,6 @@ config_name = 'dxl_ros2_ats.yaml'
 
 def generate_launch_description():
     ld = LaunchDescription()
-    
 
     param_file = os.path.join(get_package_share_directory('ats_bringup'), 'config', config_name)
     servo_driver = Node(
@@ -28,6 +27,7 @@ def generate_launch_description():
         parameters=[param_file],
         arguments=["--ros-args", "--log-level", "info"]
     )
+    ld.add_action(servo_driver)
 
     mission_director = Node(
         package="mission_director",
@@ -42,6 +42,7 @@ def generate_launch_description():
         ],
         arguments=["--ros-args", "--log-level", "info"]
     )
+    ld.add_action(mission_director)
 
     tactip_driver = Node(
         package='tactip_ros2_driver',
@@ -50,7 +51,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'source': 0},
-            {'frequency': 9.},
+            {'frequency': 10.},
             {'verbose': False},
             {'test_model_time': False},
             {'save_debug_image': False},
@@ -59,6 +60,7 @@ def generate_launch_description():
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
+    ld.add_action(tactip_driver)
 
     controller = Node(
         package='pose_based_ats',
@@ -67,7 +69,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': 20.},
-            {'reference_pose': [0., 0., -0.004]},
+            {'reference_pose': [0., 0., -0.003]},
             {'Kp_linear': 5.0},
             {'Kp_angular': 0.3},
             {'Ki_linear': 0.2},
@@ -89,9 +91,5 @@ def generate_launch_description():
             log_cmd=True,
         )
         ld.add_action(ros2bag)
-
-    ld.add_action(servo_driver)
-    ld.add_action(mission_director)
-    ld.add_action(tactip_driver)
     
     return ld

@@ -91,9 +91,6 @@ class TactipDriver(Node):
             self.get_logger().info("Testing model execution time. It will run 1000 predictions through the model and print the average time taken.")
             self.test_model_execution_time()
 
-        # Rotation between output in actual frame and the end-effector frame
-        self.R_T = np.array([[1, 0, 0], [0, 1, 0],[0, 0, 1]])
-
         # Reference image
         self.ref_image_ssim = self.sensor.process().squeeze()
 
