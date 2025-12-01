@@ -41,7 +41,7 @@ class MissionDirector(UAMStateMachine):
                 self.state_entrypoint(next_state="arms_takeoff_position")
 
             case "arms_takeoff_position":
-                q_right = [np.pi/3, 0.0, np.pi/6] # put some position here
+                q_right = [np.pi/2, 0.0, -np.pi/2] # put some position here
                 self.state_move_arms(q=q_right, next_state="wait_for_arm_offboard")
 
             case "wait_for_arm_offboard":
@@ -51,14 +51,7 @@ class MissionDirector(UAMStateMachine):
                 self.state_takeoff(target_altitude=1.5, next_state="hover")
 
             case "hover":
-                self.state_hover(duration_sec=1200, next_state="arm_up")
-
-            case "arm_up":
-                q_right = [1.57, 0.0, -1.57]
-                self.state_move_arms(q=q_right, next_state="hover_2")
-
-            case "hover_2":
-                self.state_hover(duration_sec=5, next_state="pre_contact_arm_position")
+                self.state_hover(duration_sec=1200, next_state="pre_contact_uam_position")
 
             case "pre_contact_uam_position":
                 self.state_move_uam_to_position([0.0, 0.5, -1.5, 0.0], next_state="pre_contact_arm_position")

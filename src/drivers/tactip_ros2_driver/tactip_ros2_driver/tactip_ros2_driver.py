@@ -253,10 +253,10 @@ class TactipDriver(Node):
         t = time.time()
         msg.twist.linear.x = 0.0
         msg.twist.linear.y = 0.0
-        msg.twist.linear.z = 0.02
-        msg.twist.angular.x = np.deg2rad(5.*math.sin(0.4*t))
-        msg.twist.angular.y = np.deg2rad(5.*math.sin(0.6*t))
-        msg.twist.angular.z = np.deg2rad(5.*math.sin(0.8*t))
+        msg.twist.linear.z = 0.03*math.sin(0.5*t)
+        msg.twist.angular.x = np.deg2rad(15.*math.sin(0.4*t))
+        msg.twist.angular.y = np.deg2rad(15.*math.sin(0.6*t))
+        msg.twist.angular.z = np.deg2rad(15.*math.sin(0.8*t))
         self.publisher_pose_.publish(msg)
 
         ssim_score = 0.3
