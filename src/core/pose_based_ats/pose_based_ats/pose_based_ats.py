@@ -131,7 +131,7 @@ class PoseBasedATS(Node):
         state = self.get_state()
         state_transform = self.evaluate_P_B(state)
         # Broadcast the current drone pose world -> body
-        self.broadcast_tf2(state_transform, "world", "body_frame")
+        self.broadcast_tf2(state_transform, "world", "present_body_frame")
 
         # Evaluate the error
         P_SC = self.evaluate_P_SC(self.tactip.twist.angular.x, self.tactip.twist.angular.y, self.tactip.twist.linear.z)
@@ -152,7 +152,7 @@ class PoseBasedATS(Node):
 
         # Broadcast the sensor frame in the body frame
         P_BS = self.evaluate_P_BS(state[6], state[7], state[8])
-        self.broadcast_tf2(P_BS, "body_frame", "sensor_frame")
+        self.broadcast_tf2(P_BS, "present_body_frame", "present_sensor_frame")
 
         P_C = P_S @ P_SC
         # Broadcast the estimated contact frame in the world
@@ -161,8 +161,8 @@ class PoseBasedATS(Node):
         P_Sref = P_S @ U_SS # Transform adjustment from sensor frame to inertial frame
 
         # Broadcast correction sensor pose in sensor frame
-        self.broadcast_tf2(U_SS, "sensor_frame", "corrected_sensor_frame")
-        self.broadcast_tf2(P_S, "world", "direct_sensor_frame")
+        self.broadcast_tf2(U_SS, "present_sensor_frame", "corrected_sensor_frame")
+        self.broadcast_tf2(P_S, "world", "direct_present_sensor_frame")
 
         # Inverse kinematics
         result = self.inverse_kinematics(P_Sref)
@@ -181,7 +181,7 @@ class PoseBasedATS(Node):
             
             # Broadcast reference body frame from IK in world: world -> ref body
             self.broadcast_tf2(self.evaluate_P_B(state_reference), "world", "reference_body_frame")
-            self.broadcast_tf2(self.evaluate_P_BS(*state_reference[5:8]), "reference_body_frame", "reference_sensor_frame")
+            self.broadcast_tf2(self.evaluate_P_BS(*state_reference[6:9]), "reference_body_frame", "reference_sensor_frame")
 
             # OUTPUT: Publish the reference servo positions to the servo driver
             msg = JointState()

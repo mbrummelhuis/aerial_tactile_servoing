@@ -51,7 +51,7 @@ class MissionDirector(UAMStateMachine):
                 self.state_takeoff(target_altitude=1.5, next_state="hover")
 
             case "hover":
-                self.state_hover(duration_sec=3, next_state="arm_up")
+                self.state_hover(duration_sec=1200, next_state="arm_up")
 
             case "arm_up":
                 q_right = [1.57, 0.0, -1.57]
