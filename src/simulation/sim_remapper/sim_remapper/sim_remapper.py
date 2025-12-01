@@ -24,6 +24,7 @@ class SimRemapper(Node):
             self.create_publisher(Float64, '/elbow_2_vel_cmd', 10),
             self.create_publisher(Float64, '/forearm_2_vel_cmd', 10)
         ]
+        # self.direcions = [1., -1., -1., ]
 
         self.q_cmd = []
         self.arm_positions = []

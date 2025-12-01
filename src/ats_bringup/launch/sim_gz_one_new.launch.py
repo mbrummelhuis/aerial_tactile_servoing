@@ -50,19 +50,19 @@ def generate_launch_description():
         ld.add_action(rosbag_record)
 
     # Mission director node
-    mission_director = Node(
-        package="mission_director",
-        executable="ymca_md",
-        name="md_ymca",
-        output="screen",
-        parameters=[
-            {'sm.frequency': 10.0},
-            {'sm.position_clip': 3.0},
-            {'sm.takeoff_altitude': 1.5},
-            {'sm.dry_test': False}
-        ],
-        arguments=["--ros-args", "--log-level", "info"]
-    )
-    ld.add_action(mission_director)
+    # mission_director = Node(
+    #     package="mission_director",
+    #     executable="ymca_md",
+    #     name="md_ymca",
+    #     output="screen",
+    #     parameters=[
+    #         {'sm.frequency': 10.0},
+    #         {'sm.position_clip': 3.0},
+    #         {'sm.takeoff_altitude': 1.5},
+    #         {'sm.dry_test': False}
+    #     ],
+    #     arguments=["--ros-args", "--log-level", "info"]
+    # )
+    # ld.add_action(mission_director)
 
     return ld
