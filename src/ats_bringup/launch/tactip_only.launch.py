@@ -18,10 +18,10 @@ def generate_launch_description():
         name='tactip_ros2_driver',
         output='screen',
         parameters=[
-            {'source': 0},
-            {'frequency': 20.},
-            {'verbose': False},
-            {'test_model_time': True},
+            {'source': 4},
+            {'frequency': 10.},
+            {'verbose': True},
+            {'test_model_time': False},
             {'save_debug_image': False},
             {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')}
         ],

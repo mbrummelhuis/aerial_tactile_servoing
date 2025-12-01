@@ -6,6 +6,7 @@ import os
 import math
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
+from scipy.spatial.transform import Rotation as R
 
 from geometry_msgs.msg import TwistStamped, TransformStamped
 from std_msgs.msg import Float64, Int8
@@ -91,7 +92,7 @@ class TactipDriver(Node):
             self.test_model_execution_time()
 
         # Rotation between output in actual frame and the end-effector frame
-        self.R_T = np.array([[1, 0, 0], [0, -1, 0],[0, 0, -1]])
+        self.R_T = np.array([[1, 0, 0], [0, 1, 0],[0, 0, 1]])
 
         # Reference image
         self.ref_image_ssim = self.sensor.process().squeeze()
@@ -133,15 +134,20 @@ class TactipDriver(Node):
 
         #processed_image = process_image(sensor_image, **processed_image_params)
         data = self.sensor.predict(sensor_image)
-        # The model outputs the sensor pose in the contact frame
+        data[2] = -data[2] # Pz Invert z to comply with convention
+        data[3] = -data[3] # Rx Invert Rx to comply with convention
+        data[4] = data[4] # Ry
+        # The model outputs the sensor pose in the contact frame NB in mm and deg
 
-        # Rotation from actual output frame to desired (i.e. convention-wise) end-effector frame
-        rot_pred_pos = np.matmul(self.R_T, data[:3]) # Rotate positions to end-effector frame
-        rot_pred_ang = np.matmul(self.R_T, data[3:6]) # Rotate angles to end-effector frames
+        # Rotation from output frame (P_CS - sensor frame in contact frame) to desired frame (P_SC - contact frame in sensor frame)
+        P_SC = self.evaluate_P_SC(np.deg2rad(data[3]), np.deg2rad(data[4]), data[2]/1000.) # Input pose elements as rad and meter
+
+        rot_pred_pos = P_SC[0:3,3]*1000.
+        rot_pred_ang = np.rad2deg(R.from_matrix(P_SC[0:3, 0:3]).as_euler('xyz'))
         rot_pred_pose = np.concatenate([rot_pred_pos, rot_pred_ang])
 
         if self.get_parameter('verbose').get_parameter_value().bool_value:
-            self.get_logger().info(f"Z (mm): {rot_pred_pose[2]:.2f} \t Rx (deg): {rot_pred_pose[3]:.2f} \t Ry (deg): {rot_pred_pose[4]:.2f}")
+            self.get_logger().info(f"[P_SC] Z (mm): {rot_pred_pose[2]:.2f} \t Rx (deg): {rot_pred_pose[3]:.2f} \t Ry (deg): {rot_pred_pose[4]:.2f}")
 
         # publish the data
         # The model outputs are in mm and deg, so convert to SI
@@ -150,9 +156,9 @@ class TactipDriver(Node):
         msg.twist.linear.x = rot_pred_pose[0]/1000.
         msg.twist.linear.y = rot_pred_pose[1]/1000.
         msg.twist.linear.z = rot_pred_pose[2]/1000.
-        msg.twist.angular.x = rot_pred_pose[3]*0.0174532925 # deg2rad
-        msg.twist.angular.y = rot_pred_pose[4]*0.0174532925 # deg2rad
-        msg.twist.angular.z = rot_pred_pose[5]*0.0174532925 # deg2rad
+        msg.twist.angular.x = np.deg2rad(rot_pred_pose[3]) # deg2rad
+        msg.twist.angular.y = np.deg2rad(rot_pred_pose[4]) # deg2rad
+        msg.twist.angular.z = np.deg2rad(rot_pred_pose[5]) # deg2rad
         self.publisher_pose_.publish(msg)
         #self.get_logger().info(f"Published data: {msg}")
 
@@ -161,10 +167,10 @@ class TactipDriver(Node):
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "contact_frame"
         t.child_frame_id = "sensor_frame"
-        t.transform.translation.x = rot_pred_pose[0]/1000.
-        t.transform.translation.y = rot_pred_pose[1]/1000.
-        t.transform.translation.z = rot_pred_pose[2]/1000.
-        q = quaternion_from_euler(rot_pred_pose[3]*0.0174532925, rot_pred_pose[4]*0.0174532925, rot_pred_pose[5]*0.0174532925)
+        t.transform.translation.x = data[0]/1000.
+        t.transform.translation.y = data[1]/1000.
+        t.transform.translation.z = data[2]/1000.
+        q = quaternion_from_euler(np.deg2rad(data[3]), np.deg2rad(data[4]), np.deg2rad(data[5]))
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]
         t.transform.rotation.z = q[2]
@@ -191,6 +197,47 @@ class TactipDriver(Node):
         self.get_logger().info(f"Iterations per second: {iterations/(end_time - start_time)} [it/s]")
         self.get_logger().info(f"Average capture time: {sum(capture_time)/iterations} [seconds/it]")
         self.get_logger().info(f"Average predict time: {sum(predict_time)/iterations} [seconds/it]")
+
+    def evaluate_P_CS(self, alpha, beta, d):
+        P_CS = np.zeros((4,4))
+        P_CS[0,0] = np.cos(beta)
+        P_CS[0,1] = np.sin(alpha)*np.sin(beta)
+        P_CS[0,2] = np.sin(beta)*np.cos(alpha)
+        P_CS[0,3] = 0
+        P_CS[1,0] = 0
+        P_CS[1,1] = np.cos(alpha)
+        P_CS[1,2] = -np.sin(alpha)
+        P_CS[1,3] = 0
+        P_CS[2,0] = -np.sin(beta)
+        P_CS[2,1] = np.sin(alpha)*np.cos(beta)
+        P_CS[2,2] = np.cos(alpha)*np.cos(beta)
+        P_CS[2,3] = d
+        P_CS[3,0] = 0
+        P_CS[3,1] = 0
+        P_CS[3,2] = 0
+        P_CS[3,3] = 1
+        return P_CS
+    
+    def evaluate_P_SC(self, alpha, beta, d):
+        P_SC = np.zeros((4,4))
+        P_SC[0,0] = np.cos(beta)
+        P_SC[0,1] = 0
+        P_SC[0,2] = -np.sin(beta)
+        P_SC[0,3] = d*np.sin(beta)
+        P_SC[1,0] = np.sin(alpha)*np.sin(beta)
+        P_SC[1,1] = np.cos(alpha)
+        P_SC[1,2] = np.sin(alpha)*np.cos(beta)
+        P_SC[1,3] = -d*np.sin(alpha)*np.cos(beta)
+        P_SC[2,0] = np.sin(beta)*np.cos(alpha)
+        P_SC[2,1] = -np.sin(alpha)
+        P_SC[2,2] = np.cos(alpha)*np.cos(beta)
+        P_SC[2,3] = -d*np.cos(alpha)*np.cos(beta)
+        P_SC[3,0] = 0
+        P_SC[3,1] = 0
+        P_SC[3,2] = 0
+        P_SC[3,3] = 1
+
+        return P_SC
 
 def main(args=None):
     rclpy.init(args=args)
