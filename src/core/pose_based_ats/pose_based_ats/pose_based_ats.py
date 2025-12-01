@@ -162,6 +162,7 @@ class PoseBasedATS(Node):
 
         # Broadcast correction sensor pose in sensor frame
         self.broadcast_tf2(U_SS, "sensor_frame", "corrected_sensor_frame")
+        self.broadcast_tf2(P_S, "world", "direct_sensor_frame")
 
         # Inverse kinematics
         result = self.inverse_kinematics(P_Sref)
@@ -501,8 +502,8 @@ class PoseBasedATS(Node):
 
     def inverse_kinematics(self, P_des, bounds=None):
         # Bounds
-        lower_state_bounds = [None, None, None, -np.pi/4, -np.pi/4, -np.pi, -0.1, -np.pi/8, -np.pi/2]
-        upper_state_bounds = [None, None, None, np.pi/4, np.pi/4, np.pi, np.pi, np.pi/8, np.pi/2]
+        lower_state_bounds = [None, None, None, -np.pi/4, -np.pi/4, -np.pi, -0.1, -np.pi/6, -np.pi/2]
+        upper_state_bounds = [None, None, None, np.pi/4, np.pi/4, np.pi, np.pi, np.pi/6, np.pi/2]
         bounds = list(zip(lower_state_bounds, upper_state_bounds))
 
         # State

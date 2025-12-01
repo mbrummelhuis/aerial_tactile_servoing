@@ -53,20 +53,23 @@ class TactipDriver(Node):
         self.declare_parameter('save_interval', 1.)
         self.declare_parameter('ssim_contact_threshold', 0.7)
         self.declare_parameter('save_directory', 'Please set a save_directory in the launch file')
-
-        # Image saving interval
+        self.declare_parameter('fake_data', False)
+        self.fake_data = self.get_parameter('fake_data').get_parameter_value().bool_value
         self.image_save_interval = self.get_parameter('save_interval').get_parameter_value().double_value
-
-        # Instantiate Tactip sensor
-        self.sensor = TacTip(self.get_parameter('source').get_parameter_value().integer_value)
         self.ssim_threshold = self.get_parameter('ssim_contact_threshold').get_parameter_value().double_value
 
         # Node feedback
         self.get_logger().info("Tactip driver initialized")
         self.get_logger().info(BASE_MODEL_PATH)
-        self.get_logger().info(f"Reading from /dev/video{self.get_parameter('source').get_parameter_value().integer_value}" )
-        self.get_logger().info(f"Sensor processing params: {self.sensor.sensor_params}")
-
+        if not self.fake_data:
+            # Initialize TacTip sensor
+            self.sensor = TacTip(self.get_parameter('source').get_parameter_value().integer_value)
+            self.get_logger().info(f"Reading from /dev/video{self.get_parameter('source').get_parameter_value().integer_value}" )
+            self.get_logger().info(f"Sensor processing params: {self.sensor.sensor_params}")
+            # Reference image
+            self.ref_image_ssim = self.sensor.process().squeeze()
+        else:
+            self.get_logger().info("Using fake data mode. No camera input.")
 
         # Set up period image saving if enabled in launch
         if self.get_parameter('save_debug_image').get_parameter_value().bool_value:
@@ -91,9 +94,6 @@ class TactipDriver(Node):
             self.get_logger().info("Testing model execution time. It will run 1000 predictions through the model and print the average time taken.")
             self.test_model_execution_time()
 
-        # Reference image
-        self.ref_image_ssim = self.sensor.process().squeeze()
-
         # Set up timer
         self.cycle_counter = 0
         self.frequency = self.get_parameter('frequency').get_parameter_value().double_value
@@ -101,6 +101,11 @@ class TactipDriver(Node):
         self.timer = self.create_timer(self.period, self.timer_callback)
 
     def timer_callback(self):
+        # Fake data hijack
+        if self.fake_data:
+            self.publish_fake_data()
+            return
+
         # read the data
         # Save an image every second
         if self.get_parameter('save_debug_image').get_parameter_value().bool_value and self.cycle_counter%int(self.frequency*self.image_save_interval) == 0:
@@ -240,6 +245,30 @@ class TactipDriver(Node):
         P_SC[3,3] = 1
 
         return P_SC
+    
+    def publish_fake_data(self):
+            # Generate fake data for testing without camera
+        msg = TwistStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        t = time.time()
+        msg.twist.linear.x = 0.0
+        msg.twist.linear.y = 0.0
+        msg.twist.linear.z = 0.02
+        msg.twist.angular.x = np.deg2rad(5.*math.sin(0.4*t))
+        msg.twist.angular.y = np.deg2rad(5.*math.sin(0.6*t))
+        msg.twist.angular.z = np.deg2rad(5.*math.sin(0.8*t))
+        self.publisher_pose_.publish(msg)
+
+        ssim_score = 0.3
+        msg_ssim = Float64()
+        msg_ssim.data = ssim_score
+        self.publisher_ssim_.publish(msg_ssim)
+
+        contact = ssim_score < self.ssim_threshold
+        msg_contact = Int8()
+        msg_contact.data = contact
+        self.publisher_contact_.publish(msg_contact)
+        return
 
 def main(args=None):
     rclpy.init(args=args)
