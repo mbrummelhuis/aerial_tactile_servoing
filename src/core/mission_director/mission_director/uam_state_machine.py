@@ -16,9 +16,8 @@ from px4_msgs.msg import VehicleLocalPosition
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 class UAMStateMachine(Node):
-    def __init__(self, node_name: str, fcu_on: bool = True):
+    def __init__(self, node_name: str):
         super().__init__(node_name)
-        self.get_logger().info(f"StateMachine node '{node_name}' initialized.")
 
         # Parameters
         self.declare_parameter('sm.frequency', 10.0)
@@ -26,6 +25,13 @@ class UAMStateMachine(Node):
         self.timer_period = 1.0 / self.frequency
         self.declare_parameter('sm.position_clip', 0.0)
         self.position_clip = self.get_parameter('sm.position_clip').get_parameter_value().double_value
+        self.declare_parameter('sm.fcu_on', True)
+        self.fcu_on = self.get_parameter('sm.fcu_on').get_parameter_value().bool_value
+        self.declare_parameter('sm.sim', False)
+        self.sim = self.get_parameter('sm.sim').get_parameter_value().bool_value
+
+        self.get_logger().info(f"StateMachine node '{node_name}' initialized with params: "
+                                f"frequency={self.frequency}, position_clip={self.position_clip}, fcu_on={self.fcu_on}, sim={self.sim}")
 
         # State machine publishers and subscribers
         self.pub_sm_state = self.create_publisher(Int32, '/md/state', 10)
@@ -54,7 +60,7 @@ class UAMStateMachine(Node):
         self.FSM_state = "entrypoint"
         self.input_state = 0
         self.first_state_loop = True
-        self.fcu_on = fcu_on
+        self.flying = False
         self.armed = False
         self.offboard = False
         self.takeoff_altitude = 1.5  # Default takeoff altitude
@@ -105,7 +111,7 @@ class UAMStateMachine(Node):
             self.input_state = 0
         self.state_start_time = datetime.datetime.now() # Reset start time for next state
         self.first_state_loop = True # Reset first loop flag
-        self.get_logger().info(f"Transition from {self.FSM_state} to {new_state}")
+        self.get_logger().info(f"[TRANSITION] {self.FSM_state} -> {new_state}")
         self.FSM_state = new_state
         self.counter = 0
 
@@ -216,6 +222,16 @@ class UAMStateMachine(Node):
     def state_wait_for_arming(self, next_state='emergency'):
         self.handle_state(state_number=3)
 
+        if self.sim:
+            if not self.offboard and self.counter%self.frequency==0:
+                self.get_logger().info("[3] Sending sim offboard command")
+                self.sim_engage_offboard_mode()
+                self.counter = 0
+            if not self.armed and self.offboard and self.counter%self.frequency==0:
+                self.get_logger().info("[3] Sending sim arm command")
+                self.sim_arm_vehicle()
+                self.counter = 0
+
         # State transition
         if self.armed and not self.offboard:
             self.get_logger().info('Armed but not offboard -- waiting', throttle_duration_sec=1)
@@ -226,8 +242,6 @@ class UAMStateMachine(Node):
 
     def state_takeoff(self, target_altitude = 1.5, next_state='emergency'):
         self.handle_state(state_number=4)
-        self.publish_trajectory_position_setpoint(*self.home_position)
-        current_altitude = self.vehicle_local_position.z
 
         # First state loop
         if self.first_state_loop:
@@ -237,11 +251,15 @@ class UAMStateMachine(Node):
             self.get_logger().info(f'[4] Takeoff z-coord: {self.home_position[2]} m')
             self.first_state_loop = False
 
+        self.publish_trajectory_position_setpoint(*self.home_position)
+        current_altitude = self.vehicle_local_position.z
+
         # State transition
         if not self.offboard and self.fcu_on:
             self.transition_to_state('emergency')
         elif abs(current_altitude)+0.1 > abs(self.home_position[2]) or self.input_state==1:
             self.transition_to_state(new_state=next_state)
+            self.flying = True
 
     def state_land(self, landing_speed=0.5, next_state='emergency'):
         self.handle_state(state_number=5)
@@ -262,6 +280,7 @@ class UAMStateMachine(Node):
             self.transition_to_state('emergency')
         elif (self.vehicle_local_position.z >= -0.1 and self.land_position[2] > 0.5) or self.input_state==1:
             self.transition_to_state(new_state=next_state)
+            self.flying = False
 
     def state_hover(self, duration_sec: float, next_state='emergency'):
         self.handle_state(state_number=10)
@@ -303,7 +322,7 @@ class UAMStateMachine(Node):
         self.get_logger().info(f'Current arm positions: {current_q}, Target arm positions: {target_q}, Error: {error:.4f}', throttle_duration_sec=1)
 
         # State transition
-        if not self.offboard and self.fcu_on:
+        if not self.offboard and self.fcu_on and self.flying:
             self.transition_to_state('emergency')
         elif (error < 0.1) or self.input_state==1: # If error is small enough or input state is 1
             self.transition_to_state(new_state=next_state)
@@ -325,7 +344,7 @@ class UAMStateMachine(Node):
         self.get_logger().info(f'Current position: {current_position}, Target position: {target_pos}, Error: {error:.4f}', throttle_duration_sec=1)
 
         # State transition
-        if not self.offboard and self.fcu_on:
+        if not self.offboard and self.fcu_on and self.flying:
             self.transition_to_state('emergency')
         elif (error < 0.2) or self.input_state==1: # If error is small enough or input state is 1
             self.transition_to_state(new_state=next_state)

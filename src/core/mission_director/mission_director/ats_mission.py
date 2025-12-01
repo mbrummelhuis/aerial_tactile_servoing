@@ -14,7 +14,7 @@ class MissionDirector(UAMStateMachine):
         self.get_logger().info("MissionDirector node ats_mission initialized.")
 
         # Tactile servoing parameters
-        self.contact_depth_threshold = 0.01  # Threshold for tactip z-velocity
+        self.contact_depth_threshold = 0.02  # Threshold for tactip pose z to detect contact (in meters)
 
         # Tactip interfaces
         self.sub_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.tactip_callback, 10)
@@ -38,15 +38,11 @@ class MissionDirector(UAMStateMachine):
     def execute(self):
         match self.FSM_state:
             case "entrypoint":
-                self.state_entrypoint(next_state="move_arms")
-
-            case "move_arms":
-                q_right = [0.0, 0.0, 0.0]
-                self.state_move_arms(q=q_right.append(q_right[0]-np.pi), next_state="arms_takeoff_position")
+                self.state_entrypoint(next_state="arms_takeoff_position")
 
             case "arms_takeoff_position":
                 q_right = [1.57, 0.0, -1.57] # put some position here
-                self.state_move_arms(q=q_right.append(q_right[0]-np.pi), next_state="wait_for_arm_offboard")
+                self.state_move_arms(q=q_right, next_state="wait_for_arm_offboard")
 
             case "wait_for_arm_offboard":
                 self.state_wait_for_arming(next_state="takeoff")
@@ -55,11 +51,14 @@ class MissionDirector(UAMStateMachine):
                 self.state_takeoff(target_altitude=1.5, next_state="hover")
 
             case "hover":
-                self.state_hover(duration_sec=10, next_state="pre_contact_position")
+                self.state_hover(duration_sec=5, next_state="pre_contact_uam_position")
 
-            case "pre_contact_position":
+            case "pre_contact_uam_position":
+                self.state_move_uam_to_position([0.0, 0.5, -1.5, 0.0], next_state="pre_contact_arm_position")
+
+            case "pre_contact_arm_position":
                 q_right = [np.pi/3, 0.0, np.pi/6] # put some position here
-                self.state_move_arms(q=q_right.append(q_right[0]-np.pi), next_state="land")
+                self.state_move_arms(q=q_right, next_state="approach")
 
             case "approach":
                 self.handle_state(state_number=21)
@@ -79,7 +78,7 @@ class MissionDirector(UAMStateMachine):
                 self.get_logger().info(f'Approaching... Y setpoint: {self.running_position[1]} m', throttle_duration_sec=1)
 
                 # State transition
-                if not self.offboard and not self.dry_test:
+                if not self.offboard and self.fcu_on:
                     self.transition_to_state('emergency')
                 elif self.contact or self.input_state==1:
                     self.transition_to_state(new_state="tactile_servoing")
@@ -99,19 +98,36 @@ class MissionDirector(UAMStateMachine):
                     self.vehicle_trajectory_setpoint.position[2],
                     self.vehicle_trajectory_setpoint.yaw
                 )
-                servo_position_references = self.servo_reference.position.copy()
-                np.append(servo_position_references, servo_position_references[0] - np.pi)
-                self.publish_servo_position_references(servo_position_references) # TODO test this
 
-                if self.tactip_data.twist.linear.z > self.contact_depth_threshold:
-                   self.transition_to_state('approach')
+                self.publish_servo_position_references(self.servo_reference.position) # TODO test this
+
+                if abs(self.tactip_data.twist.linear.z) < abs(self.contact_depth_threshold):
+                   self.transition_to_state('pre_contact_uam_position')
                 elif (datetime.datetime.now() - self.state_start_time).seconds > 150. or self.input_state==1:
-                    self.transition_to_state('land')
-                elif not self.offboard or self.killed or self.input_state == 2:
+                    self.transition_to_state('land_position')
+                elif not self.offboard and self.fcu_on:
                     self.transition_to_state('emergency')
+            
+            case "land_position":
+                self.state_move_uam_to_position([0.0, 0.0, -1.5, 0.0], next_state="land_arms_position")
+
+            case "land_arms_position":
+                q_right = [1.57, 0.0, -1.57] # put some position here
+                self.state_move_arms(q=q_right, next_state="land")
 
             case "land":
-                self.state_land(next_state="disarm")
+                self.state_land(next_state="done")
+
+            case "done":
+                self.get_logger().info("Mission completed successfully.", throttle_duration_sec=5.)
+
+            # --- Do not remove these states ---
+            case "emergency":
+                self.state_emergency()
+
+            case _:
+                self.get_logger().error(f"Unknown state: {self.FSM_state}")
+                self.transition_to_state(new_state="emergency")
 
     # ------------------------------------------------------------------------------------
     # Tactile servoing specific callbacks
