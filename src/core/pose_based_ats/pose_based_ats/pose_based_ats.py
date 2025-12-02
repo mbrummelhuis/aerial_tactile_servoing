@@ -91,6 +91,7 @@ class PoseBasedATS(Node):
         self.servo_state.position = [0., 0., 0.]
         self.vehicle_odometry = VehicleOdometry()
         self.contact = False
+        self.accumulate_integrator = False
         self.md_state = 0
 
         # Custom weighting matrix for the regularization of the full kinematics case
@@ -139,7 +140,7 @@ class PoseBasedATS(Node):
         e_sr = self.transformation_to_vector(E_Sref)
 
         # Check for contact through SSIM
-        if self.md_state == 8: # If contact, accumulate integrator
+        if self.accumulate_integrator: # If contact, accumulate integrator
             self.integrator += self.Ki @ e_sr
         else: # If not contact, reset integrator
             self.integrator = 0.

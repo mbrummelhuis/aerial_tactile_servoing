@@ -16,43 +16,20 @@ from .tactip import TacTip
 
 from .dependencies.label_encoder import BASE_MODEL_PATH
 
-
-def quaternion_from_euler(ai, aj, ak):
-    ai /= 2.0
-    aj /= 2.0
-    ak /= 2.0
-    ci = math.cos(ai)
-    si = math.sin(ai)
-    cj = math.cos(aj)
-    sj = math.sin(aj)
-    ck = math.cos(ak)
-    sk = math.sin(ak)
-    cc = ci*ck
-    cs = ci*sk
-    sc = si*ck
-    ss = si*sk
-
-    q = np.empty((4, ))
-    q[0] = cj*sc - sj*cs
-    q[1] = cj*ss + sj*cc
-    q[2] = cj*cs - sj*sc
-    q[3] = cj*cc + sj*ss
-
-    return q
-
 class TactipDriver(Node):
     def __init__(self):
         super().__init__('tactip_driver')
 
         # Parameters
-        self.declare_parameter('source', 4)
+        self.declare_parameter('source', 0)
         self.declare_parameter('frequency', 10.)
-        self.declare_parameter('verbose', False)
+        self.declare_parameter('verbose', True)
         self.declare_parameter('test_model_time', False)
         self.declare_parameter('save_debug_image', False)
         self.declare_parameter('save_interval', 1.)
         self.declare_parameter('ssim_contact_threshold', 0.7)
         self.declare_parameter('save_directory', 'Please set a save_directory in the launch file')
+        self.declare_parameter('zero_when_no_contact', False)
         self.declare_parameter('fake_data', False)
         self.fake_data = self.get_parameter('fake_data').get_parameter_value().bool_value
         self.image_save_interval = self.get_parameter('save_interval').get_parameter_value().double_value
@@ -125,16 +102,23 @@ class TactipDriver(Node):
         msg.data = ssim_score
         self.publisher_ssim_.publish(msg)
 
-        # Deduce contact
+        # Deduce contact, if contact, publish real data
         if ssim_score < self.ssim_threshold:
             contact = True
+            self.publish_real_data(sensor_image)
         else:
             contact = False
+            if self.get_parameter('zero_when_no_contact').get_parameter_value().bool_value:
+                self.publish_zero_data()
+            else:
+                self.publish_real_data(sensor_image)
         msg = Int8()
         msg.data = contact
         self.publisher_contact_.publish(msg)
 
-        #processed_image = process_image(sensor_image, **processed_image_params)
+        self.cycle_counter +=1
+
+    def publish_real_data(self, sensor_image):
         data = self.sensor.predict(sensor_image)
         data[2] = -data[2] # Pz Invert z to comply with convention
         data[3] = -data[3] # Rx Invert Rx to comply with convention
@@ -165,7 +149,7 @@ class TactipDriver(Node):
         #self.get_logger().info(f"Published data: {msg}")
 
         # Invert the transform
-        q = quaternion_from_euler(np.deg2rad(data[3]), np.deg2rad(data[4]), np.deg2rad(data[5]))
+        q = R.from_euler('xyz', [np.deg2rad(data[3]), np.deg2rad(data[4]), np.deg2rad(data[5])]).as_quat()
         q_inv = np.array([-q[0], -q[1], -q[2], q[3]])
         R_inv = R.from_quat(q_inv).as_matrix()
         translation_inv = - (R_inv @ np.array([data[0],data[1],data[2]]))
@@ -184,7 +168,33 @@ class TactipDriver(Node):
         t.transform.rotation.w = float(q_inv[3])
         self.broadcaster_tf.sendTransform(t)
 
-        self.cycle_counter +=1
+    def publish_zero_data(self):  
+        if self.get_parameter('verbose').get_parameter_value().bool_value:
+            self.get_logger().info(f"[P_SC] Z (mm): 0.00 \t Rx (deg): 0.00 \t Ry (deg): 0.00 (no contact)")
+
+        msg = TwistStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.twist.linear.x = 0.0
+        msg.twist.linear.y = 0.0
+        msg.twist.linear.z = 0.0
+        msg.twist.angular.x = 0.0
+        msg.twist.angular.y = 0.0
+        msg.twist.angular.z = 0.0
+        self.publisher_pose_.publish(msg)
+
+        # Broadcast the TF
+        t = TransformStamped()
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "present_sensor_frame"
+        t.child_frame_id = "present_contact_frame"
+        t.transform.translation.x = 0.0
+        t.transform.translation.y = 0.0
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = 0.0
+        t.transform.rotation.w = 1.0
+        self.broadcaster_tf.sendTransform(t)
 
     def test_model_execution_time(self, iterations = 1000):
         start_time = time.time()
@@ -247,7 +257,7 @@ class TactipDriver(Node):
         return P_SC
     
     def publish_fake_data(self):
-            # Generate fake data for testing without camera
+        # Generate fake data for testing without camera
         msg = TwistStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         t = time.time()
@@ -268,7 +278,6 @@ class TactipDriver(Node):
         msg_contact = Int8()
         msg_contact.data = contact
         self.publisher_contact_.publish(msg_contact)
-        return
 
 def main(args=None):
     rclpy.init(args=args)
