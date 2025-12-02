@@ -81,7 +81,7 @@ def generate_launch_description():
             {'save_debug_image': False},
             {'ssim_contact_threshold': 0.5},
             {'save_directory': os.path.join('/home','martijn','aerial_tactile_servoing','data','tactip_images')},
-            {'fake_data': True}
+            {'fake_data': False}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )
@@ -94,15 +94,15 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'frequency': 10.},
-            {'reference_pose': [0., 0., -0.003]},
-            {'Kp_linear': 5.0},
-            {'Kp_angular': 0.3},
+            {'reference_pose': [0., 0., 0.003]},
+            {'Kp_linear': -10.0},
+            {'Kp_angular': -0.3},
             {'Ki_linear': 0.2},
             {'Ki_angular':0.01 },
             {'windup_clip': 0.1},
             {'publish_log': False},
             {'regularization_weight': 0.001},
-            {'test_execution_speed': False}
+            {'test_execution_time': False}
         ],
         arguments=['--ros-args', '--log-level', 'info']
     )

@@ -173,8 +173,8 @@ class TactipDriver(Node):
         # Broadcast the TF
         t = TransformStamped()
         t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = "sensor_frame"
-        t.child_frame_id = "contact_frame"
+        t.header.frame_id = "present_sensor_frame"
+        t.child_frame_id = "present_contact_frame"
         t.transform.translation.x = float(translation_inv[0])/1000.
         t.transform.translation.y = float(translation_inv[1])/1000.
         t.transform.translation.z = float(translation_inv[2])/1000.

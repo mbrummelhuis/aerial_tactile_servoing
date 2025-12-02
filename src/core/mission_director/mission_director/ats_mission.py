@@ -14,7 +14,7 @@ class MissionDirector(UAMStateMachine):
         self.get_logger().info("MissionDirector node ats_mission initialized.")
 
         # Tactile servoing parameters
-        self.contact_depth_threshold = 0.02  # Threshold for tactip pose z to detect contact (in meters)
+        self.contact_depth_threshold = 0.002  # Threshold for tactip pose z to detect contact (in meters)
 
         # Tactip interfaces
         self.sub_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.tactip_callback, 10)
@@ -51,14 +51,14 @@ class MissionDirector(UAMStateMachine):
                 self.state_takeoff(target_altitude=1.5, next_state="hover")
 
             case "hover":
-                self.state_hover(duration_sec=1200, next_state="pre_contact_uam_position")
+                self.state_hover(duration_sec=3, next_state="pre_contact_uam_position")
 
             case "pre_contact_uam_position":
                 self.state_move_uam_to_position([0.0, 0.5, -1.5, 0.0], next_state="pre_contact_arm_position")
 
             case "pre_contact_arm_position":
                 q_right = [np.pi/3, 0.0, np.pi/6] # put some position here
-                self.state_move_arms(q=q_right, next_state="hover")
+                self.state_move_arms(q=q_right, next_state="approach")
 
             case "approach":
                 self.handle_state(state_number=21)
@@ -106,10 +106,10 @@ class MissionDirector(UAMStateMachine):
                 )
 
                 self.publish_servo_position_references(self.servo_reference.position) # TODO test this
-
+                self.get_logger().info(f'Contact depth: {self.tactip_data.twist.linear.z} / {self.contact_depth_threshold} m', throttle_duration_sec=1)
                 if abs(self.tactip_data.twist.linear.z) < abs(self.contact_depth_threshold):
                    self.transition_to_state('pre_contact_uam_position')
-                elif (datetime.datetime.now() - self.state_start_time).seconds > 150. or self.input_state==1:
+                elif (datetime.datetime.now() - self.state_start_time).seconds > 300. or self.input_state==1:
                     self.transition_to_state('land_position')
                 elif not self.offboard and self.fcu_on:
                     self.transition_to_state('emergency')
