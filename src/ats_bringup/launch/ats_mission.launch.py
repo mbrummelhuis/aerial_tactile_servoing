@@ -11,7 +11,7 @@ Launch file for testing the ROS2 Dynamixel driver.
 The package can be launched with 'ros2 launch ats_bringup dxl_example_config.launch.py'
 """
 
-logging = False
+logging = True
 log_path = '/ros2_ws/aerial_tactile_servoing/rosbags/'
 config_name = 'dxl_ros2_ats.yaml'
 
@@ -35,7 +35,7 @@ def generate_launch_description():
         name="md_ats_mission",
         output="screen",
         parameters=[
-            {'sm.frequency': 10.0},
+            {'sm.frequency': 15.0},
             {'sm.position_clip': 3.0},
             {'sm.fcu_on': True},
             {'sm.sim': False}
@@ -51,7 +51,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             {'source': 0},
-            {'frequency': 10.},
+            {'frequency': 15.},
             {'verbose': False},
             {'test_model_time': False},
             {'save_debug_image': False},
@@ -69,7 +69,7 @@ def generate_launch_description():
         name='controller',
         output='screen',
         parameters=[
-            {'frequency': 20.},
+            {'frequency': 15.},
             {'reference_pose': [0., 0., 0.003]},
             {'Kp_linear': -10.0},
             {'Kp_angular': -0.3},
@@ -85,7 +85,7 @@ def generate_launch_description():
     ld.add_action(controller)
 
     if logging:
-        rosbag_name = 'ros2bag_servo_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        rosbag_name = 'ros2bag_ats_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         ros2bag = ExecuteProcess(
             cmd=['ros2', 'bag', 'record', '-o', log_path+rosbag_name, '-a'], 
             output='screen', 
