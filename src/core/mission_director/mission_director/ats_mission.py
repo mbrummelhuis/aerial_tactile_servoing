@@ -56,7 +56,7 @@ class MissionDirector(UAMStateMachine):
                 self.state_hover(duration_sec=3, next_state="pre_contact_uam_position")
 
             case "pre_contact_uam_position":
-                self.state_move_uam_to_position([0.0, 0.7, -1.7, 0.0], next_state="pre_contact_arm_position")
+                self.state_move_uam_to_position([0.0, 0.7, -1.6, 0.0], next_state="pre_contact_arm_position")
 
             case "pre_contact_arm_position":
                 q_right = [np.pi/3, 0.0, np.pi/6] # put some position here
