@@ -15,6 +15,8 @@ class MissionDirector(UAMStateMachine):
 
         # Tactile servoing parameters
         self.contact_depth_threshold = 0.002  # Threshold for tactip pose z to detect contact (in meters)
+        self.ts_no_contact_counter = 0
+        self.ts_no_contact_max_cycles = 10  # Max cycles without contact before aborting tactile servoing
 
         # Tactip interfaces
         self.sub_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.tactip_callback, 10)
@@ -91,6 +93,10 @@ class MissionDirector(UAMStateMachine):
             
             case "tactile_servoing":
                 self.handle_state(state_number=22)
+                if not self.contact:
+                    self.ts_no_contact_counter += 1
+                else:
+                    self.ts_no_contact_counter = 0
 
                 # First state loop
                 if self.first_state_loop:
@@ -105,11 +111,13 @@ class MissionDirector(UAMStateMachine):
                     self.vehicle_trajectory_setpoint.yaw
                 )
 
-                self.publish_servo_position_references(self.servo_reference.position) # TODO test this
+                self.publish_servo_position_references(self.servo_reference.position)
                 self.get_logger().info(f'Contact depth: {self.tactip_data.twist.linear.z} / {self.contact_depth_threshold} m')
                 self.get_logger().info(f'Contact: {self.contact}')
-                if not self.contact: # TODO make less hacky
-                   self.transition_to_state('pre_contact_uam_position')
+                if self.ts_no_contact_counter > self.ts_no_contact_max_cycles: # If no contact for 10 cycles, go back to approach
+                    self.get_logger().info('Lost contact, returning to approach state.')
+                    self.ts_no_contact_counter = 0
+                    self.transition_to_state('pre_contact_uam_position')
                 elif (datetime.datetime.now() - self.state_start_time).seconds > 300. or self.input_state==1:
                     self.transition_to_state('land_position')
                 elif not self.offboard and self.fcu_on:

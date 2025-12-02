@@ -224,6 +224,8 @@ class UAMStateMachine(Node):
     def state_wait_for_arming(self, next_state='emergency'):
         self.handle_state(state_number=3)
 
+        self.get_logger().info('[3] Waiting for arming and offboard mode', throttle_duration_sec=1)
+
         if self.sim:
             if not self.offboard and self.counter%self.frequency==0:
                 self.get_logger().info("[3] Sending sim offboard command")
@@ -236,9 +238,9 @@ class UAMStateMachine(Node):
 
         # State transition
         if self.armed and not self.offboard:
-            self.get_logger().info('Armed but not offboard -- waiting', throttle_duration_sec=1)
+            self.get_logger().info('[3] Armed but not offboard -- waiting', throttle_duration_sec=1)
         elif not self.armed and self.offboard:
-            self.get_logger().info('Not armed but offboard -- waiting', throttle_duration_sec=1)
+            self.get_logger().info('[3] Not armed but offboard -- waiting', throttle_duration_sec=1)
         elif (self.armed and self.offboard) or self.input_state == 1:
             self.transition_to_state(new_state=next_state)
 
@@ -349,20 +351,6 @@ class UAMStateMachine(Node):
         if not self.offboard and self.fcu_on and self.flying:
             self.transition_to_state('emergency')
         elif (error < 0.2) or self.input_state==1: # If error is small enough or input state is 1
-            self.transition_to_state(new_state=next_state)
-
-    def state_sim_arm(self, next_state='emergency'):
-        self.handle_state(state_number=3)
-        if not self.offboard and self.counter%self.frequency==0:
-            self.get_logger().info("Sending offboard command")
-            self.sim_engage_offboard_mode()
-            self.counter = 0
-        if not self.armed and self.offboard and self.counter%self.frequency==0:
-            self.get_logger().info("Sending arm command")
-            self.sim_arm_vehicle()
-            self.counter = 0
-
-        if self.armed and self.offboard:
             self.transition_to_state(new_state=next_state)
 
     def state_emergency(self):
