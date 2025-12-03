@@ -12,9 +12,9 @@ from geometry_msgs.msg import TwistStamped, TransformStamped
 from sensor_msgs.msg import JointState
 from px4_msgs.msg import VehicleOdometry, TrajectorySetpoint
 
-L_1 = 0.11  # Distance from body frame to first servo axis
-L_2 = 0.311 # Distance from first servo axis to second servo axis
-L_3 = 0.273 # Distance from second servo axis to TacTip sensor
+L_1 = 0.12025  # Distance from body frame to first servo axis
+L_2 = 0.336 # Distance from first servo axis to second servo axis
+L_3 = 0.327 # Distance from second servo axis to TacTip sensor
 
 class PoseBasedATS(Node):
     def __init__(self):
@@ -102,9 +102,9 @@ class PoseBasedATS(Node):
         self.weighting_matrix_deviation[3,3] = 10 # Roll - high penalty
         self.weighting_matrix_deviation[4,4] = 10 # Pitch - high penalty
         self.weighting_matrix_deviation[5,5] = 1
-        self.weighting_matrix_deviation[6,6] = 0.5 # Q1 - low penalty
-        self.weighting_matrix_deviation[7,7] = 10 # Q2 - high penalty
-        self.weighting_matrix_deviation[8,8] = 0.5 # Q3 - low penalty
+        self.weighting_matrix_deviation[6,6] = 1 # Q1 - low penalty
+        self.weighting_matrix_deviation[7,7] = 1 # Q2 - high penalty
+        self.weighting_matrix_deviation[8,8] = 1 # Q3 - low penalty
 
         self.weighting_matrix_nominal =  np.eye(9)
         self.weighting_matrix_nominal[0,0] = 0
