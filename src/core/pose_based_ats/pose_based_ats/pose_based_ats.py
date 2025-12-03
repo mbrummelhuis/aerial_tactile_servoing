@@ -145,7 +145,7 @@ class PoseBasedATS(Node):
         else: # If not contact, reset integrator
             self.integrator = 0.
 
-        u_ss = self.Kp@e_sr + np.clip(self.integrator,-self.windup, self.windup)
+        u_ss = -self.Kp@e_sr - np.clip(self.integrator,-self.windup, self.windup)
 
         # Control law
         U_SS = self.vector_to_transformation(u_ss)

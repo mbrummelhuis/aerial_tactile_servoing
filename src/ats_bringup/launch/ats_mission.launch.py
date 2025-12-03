@@ -35,7 +35,7 @@ def generate_launch_description():
         name="md_ats_mission",
         output="screen",
         parameters=[
-            {'sm.frequency': 15.0},
+            {'sm.frequency': 50.0},
             {'sm.position_clip': 3.0},
             {'sm.fcu_on': True},
             {'sm.sim': False}
@@ -70,12 +70,12 @@ def generate_launch_description():
         name='controller',
         output='screen',
         parameters=[
-            {'frequency': 15.},
+            {'frequency': 50.},
             {'reference_pose': [0., 0., 0.003]},
-            {'Kp_linear': -10.0},
-            {'Kp_angular': -0.3},
-            {'Ki_linear': -0.2},
-            {'Ki_angular':-0.01 },
+            {'Kp_linear': 10.0},
+            {'Kp_angular': 0.3},
+            {'Ki_linear': 0.0}, # was 0.2
+            {'Ki_angular': 0.0}, # was 0.01
             {'windup_clip': 0.1},
             {'publish_log': False},
             {'regularization_weight': 0.001},

@@ -16,7 +16,8 @@ class MissionDirector(UAMStateMachine):
         # Tactile servoing parameters
         self.contact_depth_threshold = 0.002  # Threshold for tactip pose z to detect contact (in meters)
         self.ts_no_contact_counter = 0
-        self.ts_no_contact_max_cycles = 10  # Max cycles without contact before aborting tactile servoing
+        self.ts_no_contact_max_seconds = 10  # Max cycles without contact before aborting tactile servoing
+        self.ts_no_contact_max_cycles = int(self.ts_no_contact_max_seconds * self.frequency)
 
         # Tactip interfaces
         self.sub_tactip = self.create_subscription(TwistStamped, '/tactip/pose', self.tactip_callback, 10)
@@ -95,6 +96,7 @@ class MissionDirector(UAMStateMachine):
                 self.handle_state(state_number=22)
                 if not self.contact:
                     self.ts_no_contact_counter += 1
+                    self.get_logger().info(f'No contact detected. Counter: {self.ts_no_contact_counter}/{self.ts_no_contact_max_cycles}', throttle_duration_sec=1)
                 else:
                     self.ts_no_contact_counter = 0
 
@@ -112,8 +114,7 @@ class MissionDirector(UAMStateMachine):
                 )
 
                 self.publish_servo_position_references(self.servo_reference.position)
-                self.get_logger().info(f'Contact depth: {self.tactip_data.twist.linear.z} / {self.contact_depth_threshold} m')
-                self.get_logger().info(f'Contact: {self.contact}')
+                self.get_logger().info(f'Contact depth: {self.tactip_data.twist.linear.z} / {self.contact_depth_threshold} m', throttle_duration_sec=1)
                 if self.ts_no_contact_counter > self.ts_no_contact_max_cycles: # If no contact for 10 cycles, go back to approach
                     self.get_logger().info('Lost contact, returning to approach state.')
                     self.ts_no_contact_counter = 0
